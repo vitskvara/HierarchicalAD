@@ -1,6 +1,16 @@
-name = "HierarchicalAD.jl"
+name = "HierarchicalAD"
 authors = ["Vít Škvára"]
+
+[deps]
+Augmentor = "02898b10-1f73-11ea-317c-6393d7073e15"
+BSON = "fbb218c0-5317-5bc6-957e-2ee96dd4b1f0"
+DrWatson = "634d3b9d-ee7a-5ddf-bec9-22491ea816e1"
+FileIO = "5789e2e9-d7fb-5bc7-8068-2c6fae9b9549"
+ImageIO = "82e4d734-157c-48bb-816b-45c225c6df19"
+Images = "916415d5-f1e6-5110-898d-aaa5f9f070e0"
+Luxor = "ae8d54c2-7ccd-5906-9d76-62fc9837b5bc"
+ProgressMeter = "92933f4c-e287-5a05-a399-4b506db050ca"
+StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
+
 [compat]
 julia = "1.5.2"
-[deps]
-DrWatson = "634d3b9d-ee7a-5ddf-bec9-22491ea816e1"
