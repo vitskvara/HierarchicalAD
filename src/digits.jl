@@ -23,7 +23,7 @@ function rgb_digit(font::String, accent::String, digit, font_size::Int, img_size
     sethue(col)
     p = Point(6, 28)
     setfont(font*accent, font_size)
-    settext("$d", p)
+    settext("$digit", p)
     img = image_as_matrix()
     finish()
     img
