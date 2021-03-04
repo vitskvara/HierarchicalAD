@@ -1,10 +1,3 @@
-using Luxor
-using Augmentor
-using ImageIO, FileIO
-using StatsBase
-using Images
-using BSON
-
 function bw_digit(font::String, accent::String, digit, font_size::Int, img_size::Tuple)
     Drawing(img_size...)
     background("black")
