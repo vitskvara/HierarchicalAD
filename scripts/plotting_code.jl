@@ -1,3 +1,10 @@
+using DrWatson
+@quickactivate
+using HierarchicalAD
+using Plots
+using IPMeasures
+using HierarchicalAD: draw, reconstruct, decode
+
 function check_reconstructions(model, x, s=(28,28))
     println("Original samples")
     display(draw(x))
