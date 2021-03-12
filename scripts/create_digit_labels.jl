@@ -8,10 +8,12 @@ using DataFrames
 
 #
 y_tr = MLDatasets.MNIST.trainlabels();
+y_tst = MLDatasets.MNIST.testlabels();
 inpath = datadir("morpho_mnist/original")
 f_tr = joinpath(inpath, "train-morpho.csv")
-label_df = CSV.read(f_tr, DataFrame)
-label_df[!,:digit] = y_tr
+f_tst = joinpath(inpath, "t10k-morpho.csv")
+label_df = vcat(CSV.read(f_tr, DataFrame), CSV.read(f_tst, DataFrame))
+label_df[!,:digit] = vcat(y_tr, y_tst)
 CSV.write(datadir("morpho_mnist/labels.csv"), label_df)
 
 #
@@ -40,4 +42,3 @@ rgb_df = DataFrame(
 		:scale => [l[8] for l in rgbl]
 	)
 CSV.write(datadir("digits_rgb/labels.csv"), rgb_df)
-

@@ -2,8 +2,11 @@ name = "HierarchicalAD"
 authors = ["Vít Škvára"]
 
 [deps]
+ArgParse = "c7e460c6-2fb9-53a9-8c5b-16f535851c63"
 Augmentor = "02898b10-1f73-11ea-317c-6393d7073e15"
 BSON = "fbb218c0-5317-5bc6-957e-2ee96dd4b1f0"
+CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
+DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 DrWatson = "634d3b9d-ee7a-5ddf-bec9-22491ea816e1"
 FileIO = "5789e2e9-d7fb-5bc7-8068-2c6fae9b9549"
 Flux = "587475ba-b771-5e3f-ad9e-33799f191a9c"
