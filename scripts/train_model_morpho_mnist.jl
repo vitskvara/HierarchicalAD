@@ -74,30 +74,20 @@ if seed != nothing
 	seed = eval(Meta.parse(seed))
 end
 
-# get full labels and data
-full_data = HierarchicalAD.load_mnist()
-full_labels = CSV.read(datadir("morpho_mnist/labels.csv"), DataFrame)
-filter_keys = filter(k->!(k in 
-    ["latent_count", "latent_dim", "last_conv", "seed", "lambda", "batchsize", "nepochs"]),keys(args))
-filter_dict = Dict(zip(filter_keys, [args[k] for k in filter_keys]))
-included_inds = HierarchicalAD.filter_data(full_labels, filter_dict)
-
-# now split the data
-normal_data = full_data[:,:,:,included_inds]
-anomalous_data = full_data[:,:,:,.!included_inds]
-
-# further split the normal into train and val
-trinds, valinds, tstinds = HierarchicalAD.train_val_test_inds(1:size(normal_data,4), 
-    (0.8,0.199,0.001); seed=seed)
-tr_x = normal_data[:,:,:,trinds]
-val_x = normal_data[:,:,:,valinds]
-tst_x = normal_data[:,:,:,tstinds]
+# get the data
+ratios = (0.8,0.199,0.001)
+(tr_x, tr_y), (val_x, val_y), (tst_x, tst_y), (a_x, a_y) = 
+    HierarchicalAD.load_train_val_test_data("morpho_mnist", args; ratios=ratios, seed=seed)
 
 # now train the model
 ks = [(5,5), (3,3), (3,3), (1,1)][1:latent_count]
 ncs = [16,32,64,128][1:latent_count]
 model, training_history, reconstructions, latent_representations = 
     HierarchicalAD.train_vlae(latent_dim, batchsize, ks, ncs, 1, nepochs, tr_x, val_x, tst_x; λ=lambda)
+
+# compute scores
+tr_scores, val_scores, tst_scores, a_scores = map(x->reconstruction_probability(gpu(model), x, 5, batchsize), 
+    (tr_x, val_x, tst_x, a_x))
 
 # now save everything
 experiment_args = (data="morpho-mnist", latent_count=latent_count,latent_dim=latent_dim, last_conv=last_conv, 
@@ -110,6 +100,11 @@ tagsave(svn, Dict(
         :filter_dict => filter_dict,
         :training_history => training_history,
         :reconstructions => reconstructions,
-        :latent_representations => latent_representations
+        :latent_representations => latent_representations,
+        :ratios = ratios,
+        :tr_scores => tr_scores,
+        :val_scores => val_scores,
+        :tst_scores => tst_scores,
+        :a_scores => a_scores
     ))
 # TODO also add anomaly scores for tr/val/tst and for anomalous data

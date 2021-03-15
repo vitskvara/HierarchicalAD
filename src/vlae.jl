@@ -137,3 +137,15 @@ function decode(m::VLAE, zs...)
 end
 
 reconstruct(m::VLAE, x) = decode(m, encode_all(m, x)...)
+
+function reconstruction_probability(m::VLAE, x)  
+    x = gpu(x)
+    zs = map(y->rptrick(y...), _encoded_mu_vars(m, x))
+    μx, σx = _decoded_mu_var(m, zs...)
+    vx = vectorize(x)
+    -logpdf(vx, μx, σx)
+end
+reconstruction_probability(m::VLAE, x, L::Int) = mean([reconstruction_probability(m,x) for _ in 1:L])
+function reconstruction_probability(m::VLAE, x, L::Int, batchsize::Int)
+    vcat(map(b->cpu(reconstruction_probability(m, b, L)), Flux.Data.DataLoader(x, batchsize=batchsize))...)
+end
