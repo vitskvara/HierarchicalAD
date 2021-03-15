@@ -81,9 +81,10 @@ end
 CUDA.device!(gpu_id)
 
 # get the data
+dataset = "morpho_mnist"
 ratios = (0.8,0.199,0.001)
 (tr_x, tr_y), (val_x, val_y), (tst_x, tst_y), (a_x, a_y) = 
-    HierarchicalAD.load_train_val_test_data("morpho_mnist", args; ratios=ratios, seed=seed)
+    HierarchicalAD.load_train_val_test_data(dataset, args; ratios=ratios, seed=seed)
 
 # now train the model
 ks = [(5,5), (3,3), (3,3), (1,1)][1:latent_count]
@@ -96,9 +97,9 @@ tr_scores, val_scores, tst_scores, a_scores =
     map(x->HierarchicalAD.reconstruction_probability(gpu(model), x, 5, batchsize), (tr_x, val_x, tst_x, a_x))
 
 # now save everything
-experiment_args = (data="morpho-mnist", latent_count=latent_count,latent_dim=latent_dim, last_conv=last_conv, 
+experiment_args = (data=dataset, latent_count=latent_count,latent_dim=latent_dim, last_conv=last_conv, 
     seed=seed, lambda=lambda, batchsize=batchsize, nepochs=nepochs)
-svn = savename(xperiment_args, "bson")
+svn = savename(experiment_args, "bson")
 svn = joinpath(datadir("models/initial_models"), svn)
 tagsave(svn, Dict(
         :model => cpu(model),
