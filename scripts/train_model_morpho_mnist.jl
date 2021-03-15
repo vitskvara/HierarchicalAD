@@ -107,4 +107,3 @@ tagsave(svn, Dict(
         :tst_scores => tst_scores,
         :a_scores => a_scores
     ))
-# TODO also add anomaly scores for tr/val/tst and for anomalous data
