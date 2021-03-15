@@ -67,21 +67,36 @@ function train_val_test_inds(indices, ratios=(0.6,0.2,0.2); seed=nothing)
     _indices[1:ns[1]], _indices[ns[1]+1:ns[2]], _indices[ns[2]+1:ns[3]]
 end
 
-function train_val_test_mnist(seed=nothing)
-    full_data = HierarchicalAD.load_mnist()
-    full_labels = CSV.read(datadir("morpho_mnist/labels.csv"), DataFrame)
+"""
+	load_train_val_test_data(dataset, data_args=Dict(); ratios=(0.6,0.2,0.2), seed=nothing)
+
+Dataset is one of "morhpo_mnist"/"digits_bw"/"digits_rgb".
+"""
+function load_train_val_test_data(dataset, data_args=Dict(); ratios=(0.6,0.2,0.2), seed=nothing)
+    if dataset == "morpho_mnist"
+	    full_data = load_mnist()
+	else
+		raw_data = load(datadir("$(dataset)/digits.bson"))[:digits]
+		N = length(raw_data)
+		full_data = zeros(Float32, size(raw_data[1])..., N);
+		for i in 1:N
+		    full_data[:,:,:,i] .= raw_data[i]
+		end
+	end
+    full_labels = CSV.read(datadir("$(dataset)/labels.csv"), DataFrame)
     filter_keys = filter(k->!(k in 
-        ["latent_count", "latent_dim", "last_conv", "seed", "lambda", "batchsize", "nepochs"]),keys(args))
-    filter_dict = Dict(zip(filter_keys, [args[k] for k in filter_keys]))
-    included_inds = HierarchicalAD.filter_data(full_labels, filter_dict)
+        ["latent_count", "latent_dim", "last_conv", "seed", "lambda", "batchsize", "nepochs"]),
+    	keys(data_args))
+    filter_dict = Dict(zip(filter_keys, [data_args[k] for k in filter_keys]))
+    included_inds = filter_data(full_labels, filter_dict)
 
     # now split the data
     normal_data = full_data[:,:,:,included_inds]
     anomalous_data = full_data[:,:,:,.!included_inds]
 
     # further split the normal into train and val
-    trinds, valinds, tstinds = HierarchicalAD.train_val_test_inds(1:size(normal_data,4), 
-        (0.6,0.399,0.001); seed=seed)
+    trinds, valinds, tstinds = train_val_test_inds(1:size(normal_data,4), 
+        ratios; seed=seed)
     tr_x = normal_data[:,:,:,trinds]
     val_x = normal_data[:,:,:,valinds]
     tst_x = normal_data[:,:,:,tstinds]

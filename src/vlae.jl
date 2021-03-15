@@ -93,7 +93,7 @@ function _decoded_mu_var(m::VLAE, zs...)
 end
 
 function train_vlae(zdim, batchsize, ks, ncs, stride, nepochs, data, val_x, tst_x; λ=0.0f0, epochsize = size(data,4))
-    gval_x = gpu(val_x)
+    gval_x = gpu(val_x[:,:,:,1:min(1000, size(val_x,4))])
     gtst_x = gpu(tst_x)
     
     model = gpu(VLAE(zdim, ks, ncs, stride, size(data)))
@@ -110,8 +110,8 @@ function train_vlae(zdim, batchsize, ks, ncs, stride, nepochs, data, val_x, tst_
     println("Training in progress...")
     for epoch in 1:nepochs
         data_itr = Flux.Data.DataLoader(data[:,:,:,sample(1:size(data,4), epochsize)], batchsize=batchsize)
-        l = loss(val_x)
         Flux.train!(loss, ps, data_itr, opt)
+        l = Flux.mean(map(x->loss(x), Flux.Data.DataLoader(val_x, batchsize=batchsize))
         println("Epoch $(epoch)/$(nepochs), validation loss = $l")
         for i in 1:nl
             z = encode(model, gval_x, i)

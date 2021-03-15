@@ -88,7 +88,7 @@ anomalous_data = full_data[:,:,:,.!included_inds]
 
 # further split the normal into train and val
 trinds, valinds, tstinds = HierarchicalAD.train_val_test_inds(1:size(normal_data,4), 
-    (0.6,0.399,0.001); seed=seed)
+    (0.8,0.199,0.001); seed=seed)
 tr_x = normal_data[:,:,:,trinds]
 val_x = normal_data[:,:,:,valinds]
 tst_x = normal_data[:,:,:,tstinds]
