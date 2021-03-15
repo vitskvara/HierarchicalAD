@@ -3,6 +3,7 @@ using DrWatson
 using ArgParse
 using CSV, DataFrames
 using HierarchicalAD
+using Flux, CUDA
 
 s = ArgParseSettings()
 @add_arg_table s begin
@@ -67,12 +68,17 @@ s = ArgParseSettings()
         arg_type = String
         nargs = 2
         default = [">=", "0"]
+    "--gpu-id"
+        help = "GPU device switch"
+        arg_type = Int
+        default = 0
 end
 args = parse_args(s)
-@unpack latent_count, latent_dim, last_conv, seed, lambda, batchsize, nepochs = args
+@unpack latent_count, latent_dim, last_conv, seed, lambda, batchsize, nepochs, gpu_id = args
 if seed != nothing
 	seed = eval(Meta.parse(seed))
 end
+CUDA.device!(gpu_id)
 
 # get the data
 ratios = (0.8,0.199,0.001)
@@ -86,8 +92,8 @@ model, training_history, reconstructions, latent_representations =
     HierarchicalAD.train_vlae(latent_dim, batchsize, ks, ncs, 1, nepochs, tr_x, val_x, tst_x; λ=lambda)
 
 # compute scores
-tr_scores, val_scores, tst_scores, a_scores = map(x->reconstruction_probability(gpu(model), x, 5, batchsize), 
-    (tr_x, val_x, tst_x, a_x))
+tr_scores, val_scores, tst_scores, a_scores = 
+    map(x->HierarchicalAD.reconstruction_probability(gpu(model), x, 5, batchsize), (tr_x, val_x, tst_x, a_x))
 
 # now save everything
 experiment_args = (data="morpho-mnist", latent_count=latent_count,latent_dim=latent_dim, last_conv=last_conv, 

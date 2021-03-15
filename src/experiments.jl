@@ -85,7 +85,7 @@ function load_train_val_test_data(dataset, data_args=Dict(); ratios=(0.6,0.2,0.2
 	end
     full_labels = CSV.read(datadir("$(dataset)/labels.csv"), DataFrame)
     filter_keys = filter(k->!(k in 
-        ["latent_count", "latent_dim", "last_conv", "seed", "lambda", "batchsize", "nepochs"]),
+        ["latent_count", "latent_dim", "last_conv", "seed", "lambda", "batchsize", "nepochs", "gpu_id"]),
     	keys(data_args))
     filter_dict = Dict(zip(filter_keys, [data_args[k] for k in filter_keys]))
     included_inds = filter_data(full_labels, filter_dict)
