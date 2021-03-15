@@ -83,8 +83,8 @@ CUDA.device!(gpu_id)
 # get filters
 filter_keys = filter(k->!(k in 
     ["latent_count", "latent_dim", "last_conv", "seed", "lambda", "batchsize", "nepochs", "gpu_id"]),
-    keys(data_args))
-filter_dict = Dict(zip(filter_keys, [data_args[k] for k in filter_keys]))
+    keys(args))
+filter_dict = Dict(zip(filter_keys, [args[k] for k in filter_keys]))
 
 # get the data
 dataset = "morpho_mnist"
