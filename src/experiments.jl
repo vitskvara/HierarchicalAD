@@ -66,3 +66,24 @@ function train_val_test_inds(indices, ratios=(0.6,0.2,0.2); seed=nothing)
     # return the sets of indices
     _indices[1:ns[1]], _indices[ns[1]+1:ns[2]], _indices[ns[2]+1:ns[3]]
 end
+
+function train_val_test_mnist(seed=nothing)
+    full_data = HierarchicalAD.load_mnist()
+    full_labels = CSV.read(datadir("morpho_mnist/labels.csv"), DataFrame)
+    filter_keys = filter(k->!(k in 
+        ["latent_count", "latent_dim", "last_conv", "seed", "lambda", "batchsize", "nepochs"]),keys(args))
+    filter_dict = Dict(zip(filter_keys, [args[k] for k in filter_keys]))
+    included_inds = HierarchicalAD.filter_data(full_labels, filter_dict)
+
+    # now split the data
+    normal_data = full_data[:,:,:,included_inds]
+    anomalous_data = full_data[:,:,:,.!included_inds]
+
+    # further split the normal into train and val
+    trinds, valinds, tstinds = HierarchicalAD.train_val_test_inds(1:size(normal_data,4), 
+        (0.6,0.399,0.001); seed=seed)
+    tr_x = normal_data[:,:,:,trinds]
+    val_x = normal_data[:,:,:,valinds]
+    tst_x = normal_data[:,:,:,tstinds]
+    tr_x, val_x, tst_x
+end

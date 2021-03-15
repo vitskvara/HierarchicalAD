@@ -13,7 +13,7 @@ Flux.@functor VLAE
 function VLAE(zdim::Int, ks, ncs, stride, datasize)
     nl = length(ncs) # no layers
     # this captures the dimensions after each convolution
-    sout = Tuple(map(j -> size(data)[1:2] .- [sum(map(k->k[i]-1, ks[1:j])) for i in 1:2], 1:length(ncs))) 
+    sout = Tuple(map(j -> datasize[1:2] .- [sum(map(k->k[i]-1, ks[1:j])) for i in 1:2], 1:length(ncs))) 
     # this is the vec. dimension after each convolution
     #ddim = map(i->prod(sout[i])*ncs[i], 1:length(ncs))
     #ddim_d = copy(ddim)
@@ -21,7 +21,7 @@ function VLAE(zdim::Int, ks, ncs, stride, datasize)
     ddim = map(i->floor(Int,prod(sout[i])*ncs[i]/2), 1:length(ncs))
     ddim_d = copy(ddim)
     ddim_d[end] = ddim_d[end]*2
-    indim = prod(size(data)[1:3])
+    indim = prod(datasize[1:3])
     rks = reverse(ks)
     rsout = reverse(sout)
 

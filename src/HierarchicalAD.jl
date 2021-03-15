@@ -13,6 +13,7 @@ using Flux
 using CSV
 using DataFrames
 using MLDatasets
+using Random
 
 include("digits.jl")
 include("vlae.jl")

@@ -70,10 +70,9 @@ s = ArgParseSettings()
 end
 args = parse_args(s)
 @unpack latent_count, latent_dim, last_conv, seed, lambda, batchsize, nepochs = args
-
-# REMOVE THIS before training via the script
-args["digit"] = [0,1,2,3,4]
-args["thickness"] = ["<=", 100]
+if seed != nothing
+	seed = eval(Meta.parse(seed))
+end
 
 # get full labels and data
 full_data = HierarchicalAD.load_mnist()
@@ -98,7 +97,7 @@ tst_x = normal_data[:,:,:,tstinds]
 ks = [(5,5), (3,3), (3,3), (1,1)][1:latent_count]
 ncs = [16,32,64,128][1:latent_count]
 model, training_history, reconstructions, latent_representations = 
-    train_vlae(latentdim, batchsize, ks, ncs, 1, nepochs, tr_x, val_x, tst_x; λ=lambda)
+    HierarchicalAD.train_vlae(latent_dim, batchsize, ks, ncs, 1, nepochs, tr_x, val_x, tst_x; λ=lambda)
 
 # now save everything
 experiment_args = (data="morpho-mnist", latent_count=latent_count,latent_dim=latent_dim, last_conv=last_conv, 
