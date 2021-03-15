@@ -122,5 +122,9 @@ tagsave(svn, Dict(
         :tr_scores => tr_scores,
         :val_scores => val_scores,
         :tst_scores => tst_scores,
-        :a_scores => a_scores
+        :a_scores => a_scores,
+        :tr_encodings => tr_encodings, 
+        :val_encodings => val_encodings, 
+        :tst_encodings => tst_encodings, 
+        :a_encodings => a_encodings
     ))
