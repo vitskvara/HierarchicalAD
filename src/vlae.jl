@@ -130,6 +130,10 @@ function encode(m::VLAE, x, i::Int)
 end
 encode(m::VLAE, x) = encode(m, x, length(m.g))
 encode_all(m::VLAE, x) = map(y->rptrick(y...), _encoded_mu_vars(m, x))
+function encode_all(m::VLAE, x, batchsize::Int)
+    encs = map(y->cpu(encode_all(gpu(model), gpu(y))), Flux.Data.DataLoader(x, batchsize=batchsize))
+    [cat([y[i] for y in encs]..., dims=2) for i in 1:length(encs[1])]
+end
 
 function decode(m::VLAE, zs...) 
     μx, σx = _decoded_mu_var(m, zs...)

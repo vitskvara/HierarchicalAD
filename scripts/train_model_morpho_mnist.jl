@@ -102,6 +102,10 @@ model, training_history, reconstructions, latent_representations =
 tr_scores, val_scores, tst_scores, a_scores = 
     map(x->HierarchicalAD.reconstruction_probability(gpu(model), x, 5, batchsize), (tr_x, val_x, tst_x, a_x))
 
+# compute encodings
+tr_encodings, val_encodings, tst_encodings, a_encodings = 
+    map(x->HierarchicalAD.encode_all(model,x,batchsize),(tr_x, val_x, tst_x, a_x))
+
 # now save everything
 experiment_args = (data=dataset, latent_count=latent_count,latent_dim=latent_dim, last_conv=last_conv, 
     seed=seed, lambda=lambda, batchsize=batchsize, nepochs=nepochs)
