@@ -108,7 +108,7 @@ tagsave(svn, Dict(
         :training_history => training_history,
         :reconstructions => reconstructions,
         :latent_representations => latent_representations,
-        :ratios = ratios,
+        :ratios => ratios,
         :tr_scores => tr_scores,
         :val_scores => val_scores,
         :tst_scores => tst_scores,
