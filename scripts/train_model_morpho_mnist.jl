@@ -68,7 +68,7 @@ s = ArgParseSettings()
         arg_type = String
         nargs = 2
         default = [">=", "0"]
-    "--gpu-id"
+    "--gpu_id"
         help = "GPU device switch"
         arg_type = Int
         default = 0
