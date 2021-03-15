@@ -68,11 +68,11 @@ function train_val_test_inds(indices, ratios=(0.6,0.2,0.2); seed=nothing)
 end
 
 """
-	load_train_val_test_data(dataset, data_args=Dict(); ratios=(0.6,0.2,0.2), seed=nothing)
+	load_train_val_test_data(dataset, filter_dict=Dict(); ratios=(0.6,0.2,0.2), seed=nothing)
 
 Dataset is one of "morhpo_mnist"/"digits_bw"/"digits_rgb".
 """
-function load_train_val_test_data(dataset, data_args=Dict(); ratios=(0.6,0.2,0.2), seed=nothing)
+function load_train_val_test_data(dataset, filter_dict=Dict(); ratios=(0.6,0.2,0.2), seed=nothing)
     if dataset == "morpho_mnist"
 	    full_data = load_mnist()
 	else
@@ -84,10 +84,6 @@ function load_train_val_test_data(dataset, data_args=Dict(); ratios=(0.6,0.2,0.2
 		end
 	end
     full_labels = CSV.read(datadir("$(dataset)/labels.csv"), DataFrame)
-    filter_keys = filter(k->!(k in 
-        ["latent_count", "latent_dim", "last_conv", "seed", "lambda", "batchsize", "nepochs", "gpu_id"]),
-    	keys(data_args))
-    filter_dict = Dict(zip(filter_keys, [data_args[k] for k in filter_keys]))
     included_inds = filter_data(full_labels, filter_dict)
 
     # now split the data

@@ -80,11 +80,17 @@ if seed != nothing
 end
 CUDA.device!(gpu_id)
 
+# get filters
+filter_keys = filter(k->!(k in 
+    ["latent_count", "latent_dim", "last_conv", "seed", "lambda", "batchsize", "nepochs", "gpu_id"]),
+    keys(data_args))
+filter_dict = Dict(zip(filter_keys, [data_args[k] for k in filter_keys]))
+
 # get the data
 dataset = "morpho_mnist"
 ratios = (0.8,0.199,0.001)
 (tr_x, tr_y), (val_x, val_y), (tst_x, tst_y), (a_x, a_y) = 
-    HierarchicalAD.load_train_val_test_data(dataset, args; ratios=ratios, seed=seed)
+    HierarchicalAD.load_train_val_test_data(dataset, filter_dict; ratios=ratios, seed=seed)
 
 # now train the model
 ks = [(5,5), (3,3), (3,3), (1,1)][1:latent_count]
