@@ -111,7 +111,7 @@ function train_vlae(zdim, batchsize, ks, ncs, stride, nepochs, data, val_x, tst_
     for epoch in 1:nepochs
         data_itr = Flux.Data.DataLoader(data[:,:,:,sample(1:size(data,4), epochsize)], batchsize=batchsize)
         Flux.train!(loss, ps, data_itr, opt)
-        l = Flux.mean(map(x->loss(x), Flux.Data.DataLoader(val_x, batchsize=batchsize))
+        l = Flux.mean(map(x->loss(x), Flux.Data.DataLoader(val_x, batchsize=batchsize)))
         println("Epoch $(epoch)/$(nepochs), validation loss = $l")
         for i in 1:nl
             z = encode(model, gval_x, i)
