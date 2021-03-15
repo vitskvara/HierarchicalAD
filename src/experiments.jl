@@ -100,7 +100,7 @@ function load_train_val_test_data(dataset, data_args=Dict(); ratios=(0.6,0.2,0.2
     tr_x = normal_data[:,:,:,trinds]
     val_x = normal_data[:,:,:,valinds]
     tst_x = normal_data[:,:,:,tstinds]
-    ax = anomalous_data
+    a_x = anomalous_data
     
     tr_y = full_labels[trinds,:]
 	val_y = full_labels[valinds,:]
