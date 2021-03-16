@@ -151,6 +151,10 @@ tagsave(svn, Dict(
         :tr_encodings => tr_encodings, 
         :val_encodings => val_encodings, 
         :tst_encodings => tst_encodings, 
-        :a_encodings => a_encodings
+        :a_encodings => a_encodings,
+        :tr_labels => tr_labels,
+        :val_labels => val_labels,
+        :tst_labels => tst_labels,
+        :a_labels => a_labels        
     ))
 @info "Results saved to $svn"
