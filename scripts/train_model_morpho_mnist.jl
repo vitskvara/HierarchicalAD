@@ -22,13 +22,13 @@ s = ArgParseSettings()
         default = [5, 3, 3]
         help = "kernelsizes"
     "--stride"
-        help = "stride length, right now, only 1 is implemented"
+        help = "stride length, *to be implemented*"
         arg_type = Int
         default = 1
     "--layer_depth"
         arg_type = Int
         default = 1
-        help = "depth of individual Conv blocks between latent spaces"
+        help = "depth of individual Conv blocks between latent spaces, *to be implemented*"
     "--seed"
         default = nothing
         help = "data split seed"
@@ -111,8 +111,8 @@ dataset = "morpho_mnist"
 ratios = (0.8,0.199,0.001)
 (tr_x, tr_y), (val_x, val_y), (tst_x, tst_y), (a_x, a_y) = 
     HierarchicalAD.load_train_val_test_data(dataset, filter_dict; ratios=ratios, seed=seed)
-if epoch_size == nothing
-    epoch_size = size(tr_x, 4)
+if epochsize == nothing
+    epochsize = size(tr_x, 4)
 end
 
 # now train the model
