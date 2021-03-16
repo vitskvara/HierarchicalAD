@@ -10,7 +10,7 @@ end
 Flux.@functor VLAE
 (m::VLAE)(x) = reconstruct(m, x)
 
-function VLAE(zdim::Int, ks, ncs, stride, datasize)
+function VLAE(zdim::Int, ks, ncs, stride, datasize; layer_depth=1)
     nl = length(ncs) # no layers
     # this captures the dimensions after each convolution
     sout = Tuple(map(j -> datasize[1:2] .- [sum(map(k->k[i]-1, ks[1:j])) for i in 1:2], 1:length(ncs))) 
@@ -92,11 +92,12 @@ function _decoded_mu_var(m::VLAE, zs...)
     μx, σx = mu_var1(h)
 end
 
-function train_vlae(zdim, batchsize, ks, ncs, stride, nepochs, data, val_x, tst_x; λ=0.0f0, epochsize = size(data,4))
+function train_vlae(zdim, batchsize, ks, ncs, stride, nepochs, data, val_x, tst_x; 
+    λ=0.0f0, epochsize = size(data,4), layer_depth=1)
     gval_x = gpu(val_x[:,:,:,1:min(1000, size(val_x,4))])
     gtst_x = gpu(tst_x)
     
-    model = gpu(VLAE(zdim, ks, ncs, stride, size(data)))
+    model = gpu(VLAE(zdim, ks, ncs, stride, size(data), layer_depth=layer_depth))
     nl = length(model.e)
     
     ps = Flux.params(model)

@@ -7,14 +7,28 @@ using Flux, CUDA
 
 s = ArgParseSettings()
 @add_arg_table s begin
-    "latent_count"
-        arg_type = Int
-        default = 3
-        help = "number of latent spaces"
     "latent_dim"
         arg_type = Int
         default = 2
         help = "dimensionality of latent spaces"
+    "channels"
+        arg_type = Int
+        nargs = '*'
+        default = [16, 32, 64]
+        help = "channel sizes"
+    "--kernelsizes"
+        arg_type = Int
+        nargs = '*'
+        default = [5, 3, 3]
+        help = "kernelsizes"
+    "--stride"
+        help = "stride length, right now, only 1 is implemented"
+        arg_type = Int
+        default = 1
+    "--layer_depth"
+        arg_type = Int
+        default = 1
+        help = "depth of individual Conv blocks between latent spaces"
     "--seed"
         default = nothing
         help = "data split seed"
@@ -72,9 +86,15 @@ s = ArgParseSettings()
         help = "GPU device switch"
         arg_type = Int
         default = 0
+    "--epochsize"
+        help = "number of samples used in each epoch"
+        default = nothing
 end
 args = parse_args(s)
-@unpack latent_count, latent_dim, last_conv, seed, lambda, batchsize, nepochs, gpu_id = args
+@unpack latent_dim, channels, kernelsizes, stride, layer_depth, last_conv, seed, lambda, batchsize, nepochs, 
+    gpu_id, epochsize = args
+latent_count = length(channels)
+(latent_count >= length(kernelsizes)) ? nothing : error("number of kernels and channels does not match.")
 if seed != nothing
 	seed = eval(Meta.parse(seed))
 end
@@ -82,8 +102,8 @@ CUDA.device!(gpu_id)
 
 # get filters
 filter_keys = filter(k->!(k in 
-    ["latent_count", "latent_dim", "last_conv", "seed", "lambda", "batchsize", "nepochs", "gpu_id"]),
-    keys(args))
+    ["latent_dim", "channels", "kernelsizes", "stride", "layer_depth", "last_conv", "seed", "lambda", 
+    "batchsize", "nepochs", "gpu_id", "epochsize"]),keys(args))
 filter_dict = Dict(zip(filter_keys, [args[k] for k in filter_keys]))
 
 # get the data
@@ -91,12 +111,16 @@ dataset = "morpho_mnist"
 ratios = (0.8,0.199,0.001)
 (tr_x, tr_y), (val_x, val_y), (tst_x, tst_y), (a_x, a_y) = 
     HierarchicalAD.load_train_val_test_data(dataset, filter_dict; ratios=ratios, seed=seed)
+if epoch_size == nothing
+    epoch_size = size(tr_x, 4)
+end
 
 # now train the model
-ks = [(5,5), (3,3), (3,3), (1,1)][1:latent_count]
-ncs = [16,32,64,128][1:latent_count]
+ncs = channels
+ks = [(k,k) for k in kernelsizes][1:latent_count]
 model, training_history, reconstructions, latent_representations = 
-    HierarchicalAD.train_vlae(latent_dim, batchsize, ks, ncs, 1, nepochs, tr_x, val_x, tst_x; λ=lambda)
+    HierarchicalAD.train_vlae(latent_dim, batchsize, ks, ncs, stride, nepochs, tr_x, val_x, tst_x; 
+        λ=lambda, epochsize=epochsize, layer_depth=layer_depth)
 
 # compute scores
 tr_scores, val_scores, tst_scores, a_scores = 
@@ -107,8 +131,9 @@ tr_encodings, val_encodings, tst_encodings, a_encodings =
     map(x->HierarchicalAD.encode_all(model,x,batchsize),(tr_x, val_x, tst_x, a_x))
 
 # now save everything
-experiment_args = (data=dataset, latent_count=latent_count,latent_dim=latent_dim, last_conv=last_conv, 
-    seed=seed, lambda=lambda, batchsize=batchsize, nepochs=nepochs)
+experiment_args = (data=dataset, latent_count=latent_count, latent_dim=latent_dim, channels=ncs,
+    kernelsizes=ks, stride=stride, layer_depth=layer_depth, last_conv=last_conv, 
+    seed=seed, lambda=lambda, batchsize=batchsize, nepochs=nepochs, gpu_id=gpu_id, epochsize=epochsize)
 svn = savename(experiment_args, "bson")
 svn = joinpath(datadir("models/initial_models"), svn)
 tagsave(svn, Dict(
@@ -128,3 +153,4 @@ tagsave(svn, Dict(
         :tst_encodings => tst_encodings, 
         :a_encodings => a_encodings
     ))
+@info "Results saved to $svn"
