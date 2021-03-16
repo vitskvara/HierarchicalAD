@@ -134,7 +134,7 @@ tr_encodings, val_encodings, tst_encodings, a_encodings =
 experiment_args = (data=dataset, latent_count=latent_count, latent_dim=latent_dim, channels=ncs,
     kernelsizes=ks, stride=stride, layer_depth=layer_depth, last_conv=last_conv, 
     seed=seed, lambda=lambda, batchsize=batchsize, nepochs=nepochs, gpu_id=gpu_id, epochsize=epochsize)
-svn = savename(experiment_args, "bson")
+svn = HierarchicalAD.safe_savename(experiment_args, "bson", digits=5)
 svn = joinpath(datadir("models/initial_models"), svn)
 tagsave(svn, Dict(
         :model => cpu(model),

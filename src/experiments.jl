@@ -19,6 +19,25 @@ function filter_data(full_labels, filter_dict)
     return bin_inds
 end
 
+hyphen_join(x,y) = "$(x)-$(y)"
+
+"""
+	safe_savename(params, args...; kwargs...)
+
+Equivalent to DrWatson.savename but preserves arrays and tuples.
+"""
+function safe_savename(params, args...; kwargs...)
+    outparams = Dict()
+    for (k,v) in pairs(params)
+        if typeof(v) <: Vector
+            outparams[k] = reduce(hyphen_join,v)
+        else
+            outparams[k] = v
+        end
+    end
+    return replace(savename(outparams, args...; kwargs...), " "=>"")
+end
+
 function _load_mnist(type::String)
 	(type in ["train", "test"]) ? nothing : error("Suggested MNIST data type $type not available.") 
     x = eval(Meta.parse("MLDatasets.MNIST.$(type)tensor(Float32)"))
