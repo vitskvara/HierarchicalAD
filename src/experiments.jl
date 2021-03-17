@@ -124,12 +124,3 @@ function load_train_val_test_data(dataset, filter_dict=Dict(); ratios=(0.6,0.2,0
 
     (tr_x, tr_y), (val_x, val_y), (tst_x, tst_y), (a_x, a_y)
 end
-
-"""
-	timetag()
-Create a unique id based on the current time.
-"""	
-function timetag()
-	n = string(now())
-	reduce(replace, ["-" => "", ":" => "", "T" => "", "." => ""]; init=n)
-end
