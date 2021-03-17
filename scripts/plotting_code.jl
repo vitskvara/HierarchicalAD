@@ -4,6 +4,8 @@ using HierarchicalAD
 using Plots
 using IPMeasures
 using HierarchicalAD: draw, reconstruct, decode
+using StatsBase
+using Measures
 
 function check_reconstructions(model, x, s=(28,28))
     println("Original samples")
@@ -126,6 +128,52 @@ function plot_latent(z1s, z2s, labels, k::IPMeasures.AbstractKernel; dims=(1,2))
     end
     plot(pls...,layout=(1,nz))
 end
+# newer version
+function plot_latent(cat_vals, category::Symbol, labels::DataFrame, zs...; dims=(1,2))
+    cat_inds = map(d->labels[!,category] .== d, cat_vals)
+        
+    gr(size=(300*length(zs),300))
+    nz = length(zs)
+    
+    pls = []
+    for iz in 1:nz
+        p = scatter(zs[iz][dims[1],cat_inds[1]], zs[iz][dims[2],cat_inds[1]], 
+            label="$(cat_vals[1])", markersize=4, α=0.5,
+            xlims=(-3,3),ylims=(-3,3),title="z$(iz)[$(dims[1]), $(dims[2])]")
+        for (i,ci) in enumerate(cat_inds[2:end])
+            scatter!(zs[iz][dims[1],ci], zs[iz][dims[2],ci], label="$(cat_vals[i+1])", 
+                markersize=4, α=0.5,
+                xlims=(-3,3),ylims=(-3,3),title="z$(iz)[$(dims[1]), $(dims[2])]")
+        end
+        push!(pls, p)
+    end
+    plot(pls...,layout=(1,nz))
+end
+function plot_latent(cat_vals, category::Symbol, labels::DataFrame, k::IPMeasures.AbstractKernel, 
+        zs...; dims=(1,2))
+    cat_inds = map(d->labels[!,category] .== d, cat_vals)
+    
+    gr(size=(300*length(zs),300))
+    nz = length(zs)
+    pmmds = map(i->pairwise_mmd(k, cat_vals, category, labels, zs[i]), 1:nz)
+    
+    pls = []
+    for iz in 1:nz
+        p = scatter(zs[iz][dims[1],cat_inds[1]], zs[iz][dims[2],cat_inds[1]], 
+            label="$(cat_vals[1])", markersize=4, α=0.5,
+            xlims=(-3,3),ylims=(-3,3),
+            title="z$(iz)[$(dims[1]), $(dims[2])], $(category),\n mean MMD=$(round(mean(pmmds[iz]),digits=3))",
+            topmargin = 5mm)
+        for (i,ci) in enumerate(cat_inds[2:end])
+            scatter!(zs[iz][dims[1],ci], zs[iz][dims[2],ci], label="$(cat_vals[i+1])", 
+                markersize=4, α=0.5,
+                xlims=(-3,3),ylims=(-3,3))
+        end
+        push!(pls, p)
+    end
+    plot(pls...,layout=(1,nz)), pmmds
+end
+
 function plot_latent_per_dim(z1s, z2s, labels, k::IPMeasures.AbstractKernel)
     gr(size=(200*length(z1s),500))
     nz = length(z1s)
@@ -206,3 +254,29 @@ function explore_one_sample(ind, ws, test_labels, test_data, zns, test_zs; kwarg
     end
     plot(ps..., layout=(1,length(zns)))
 end
+
+function pairwise_mmd(k, groups...)
+    ngroups = length(groups)
+    dist_mat = zeros(Float32, ngroups, ngroups)
+    for i in 1:ngroups-1
+        for j in i+1:ngroups
+            dist_mat[i,j] = dist_mat[j,i] = mmd(k, groups[i], groups[j])
+        end
+    end
+    dist_mat
+end
+function pairwise_mmd(k, cat_vals, category, labels::DataFrame, data)
+    cat_inds = map(d->labels[!,category] .== d, cat_vals)
+    groups = map(is->data[:,is], cat_inds)
+    pairwise_mmd(k, groups...)
+end
+function discretize_category(labels, category, nbins)
+    limits = collect(range(minimum(labels[!,category]), maximum(labels[!,category])+ 1e-5, length = nbins+1))
+    bins = [(limits[i],limits[i+1]) for i in 1:nbins]
+    bininds = map(i->findfirst(map(b->b[1] <= labels[i,category] < b[2], bins)), 1:length(labels[!,category]));
+    temp_labels = DataFrame()
+    temp_labels[!,category] = bininds
+    temp_labels
+end
+StatsBase.sample(x::Array{T,4}, n::Int; kwargs...) where T = x[:,:,:,sample(1:size(x,4), n; kwargs...)]
+StatsBase.sample(x::Array{T,2}, n::Int; kwargs...) where T = x[:,sample(1:size(x,2), n; kwargs...)]
