@@ -14,6 +14,7 @@ using CSV
 using DataFrames
 using MLDatasets
 using Random
+using Dates
 
 include("digits.jl")
 include("vlae.jl")
