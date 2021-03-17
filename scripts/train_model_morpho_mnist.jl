@@ -16,6 +16,10 @@ s = ArgParseSettings()
         nargs = '*'
         default = [16, 32, 64]
         help = "channel sizes"
+    "--savepath"
+        arg_type = String
+        default = "test"
+        help = "subdir of data/models"
     "--kernelsizes"
         arg_type = Int
         nargs = '*'
@@ -92,7 +96,7 @@ s = ArgParseSettings()
 end
 args = parse_args(s)
 @unpack latent_dim, channels, kernelsizes, stride, layer_depth, last_conv, seed, lambda, batchsize, nepochs, 
-    gpu_id, epochsize = args
+    gpu_id, epochsize, savepath = args
 latent_count = length(channels)
 (latent_count >= length(kernelsizes)) ? nothing : error("number of kernels and channels does not match.")
 if seed != nothing
@@ -103,7 +107,7 @@ CUDA.device!(gpu_id)
 # get filters
 filter_keys = filter(k->!(k in 
     ["latent_dim", "channels", "kernelsizes", "stride", "layer_depth", "last_conv", "seed", "lambda", 
-    "batchsize", "nepochs", "gpu_id", "epochsize"]),keys(args))
+    "batchsize", "nepochs", "gpu_id", "epochsize", "savepath"]),keys(args))
 filter_dict = Dict(zip(filter_keys, [args[k] for k in filter_keys]))
 
 # get the data
@@ -131,11 +135,12 @@ tr_encodings, val_encodings, tst_encodings, a_encodings =
     map(x->HierarchicalAD.encode_all(model,x,batchsize),(tr_x, val_x, tst_x, a_x))
 
 # now save everything
-experiment_args = (data=dataset, latent_count=latent_count, latent_dim=latent_dim, channels=ncs,
+model_id = HierarchicalAD.timetag()
+experiment_args = (model_id=model_id, data=dataset, latent_count=latent_count, latent_dim=latent_dim, channels=ncs,
     kernelsizes=ks, stride=stride, layer_depth=layer_depth, last_conv=last_conv, 
     seed=seed, lambda=lambda, batchsize=batchsize, nepochs=nepochs, gpu_id=gpu_id, epochsize=epochsize)
 svn = HierarchicalAD.safe_savename(experiment_args, "bson", digits=5)
-svn = joinpath(datadir("models/initial_models"), svn)
+svn = joinpath(datadir("models/$savepath"), svn)
 tagsave(svn, Dict(
         :model => cpu(model),
         :experiment_args => experiment_args,
@@ -155,6 +160,7 @@ tagsave(svn, Dict(
         :tr_labels => tr_y,
         :val_labels => val_y,
         :tst_labels => tst_y,
-        :a_labels => a_y        
+        :a_labels => a_y,
+        :savepath => svn        
     ))
 @info "Results saved to $svn"
