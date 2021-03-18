@@ -11,7 +11,7 @@ end
 Flux.@functor VLAE
 (m::VLAE)(x) = reconstruct(m, x)
 
-function VLAE(zdim::Int, ks, ncs, stride, datasize; layer_depth=1, var=:dense)
+function VLAE(zdim::Int, ks, ncs, stride, datasize; layer_depth=1, var=:dense, activation="relu")
     nl = length(ncs) # no layers
     # this captures the dimensions after each convolution
     sout = Tuple(map(j -> datasize[1:2] .- [sum(map(k->k[i]-1, ks[1:j])) for i in 1:2], 1:length(ncs))) 
@@ -33,9 +33,12 @@ function VLAE(zdim::Int, ks, ncs, stride, datasize; layer_depth=1, var=:dense)
     ncs_out_d = vcat([floor(Int,n/2) for n in ncs_in_d[2:end]], [datasize[3]])
     ncs_out_f = vcat([floor(Int,n/2) for n in ncs[1:end-1]], [ncs[end]])
     
+    # activation function
+    af = (typeof(activation) <: Function) ? activation : eval(Meta.parse(activation))
+
     # encoder/decoder
-    e = Chain([Conv(ks[i], ncs_in_e[i]=>ncs[i], relu, stride=stride) for i in 1:nl]...)
-    d = Chain([ConvTranspose(rks[i], ncs_in_d[i]=>ncs_out_d[i], relu, stride=stride) for i in 1:nl]...,
+    e = Chain([Conv(ks[i], ncs_in_e[i]=>ncs[i], af, stride=stride) for i in 1:nl]...)
+    d = Chain([ConvTranspose(rks[i], ncs_in_d[i]=>ncs_out_d[i], af, stride=stride) for i in 1:nl]...,
      x->reshape(x, :, size(x,4)),
      Dense(indim, indim+1)
     )
@@ -44,7 +47,7 @@ function VLAE(zdim::Int, ks, ncs, stride, datasize; layer_depth=1, var=:dense)
     g = Tuple([Chain(x->reshape(x, :, size(x,4)), Dense(ddim[i], zdim*2)) for i in 1:nl])
     
     # latent reshaper
-    f = Tuple([Chain(Dense(zdim, ddim_d[i], relu), 
+    f = Tuple([Chain(Dense(zdim, ddim_d[i], af), 
             x->reshape(x, sout[i]..., ncs_out_f[i], size(x,2))) for i in nl:-1:1])
 
     return VLAE(e,d,g,f,datasize[1:3],zdim,var)
@@ -94,11 +97,12 @@ function _decoded_mu_var(m::VLAE, zs...)
 end
 
 function train_vlae(zdim, batchsize, ks, ncs, stride, nepochs, data, val_x, tst_x; 
-    λ=0.0f0, epochsize = size(data,4), layer_depth=1, lr=0.001f0, var=:dense)
+    λ=0.0f0, epochsize = size(data,4), layer_depth=1, lr=0.001f0, var=:dense, activation=activation)
     gval_x = gpu(val_x[:,:,:,1:min(1000, size(val_x,4))])
     gtst_x = gpu(tst_x)
     
-    model = gpu(VLAE(zdim, ks, ncs, stride, size(data), layer_depth=layer_depth, var=var))
+    model = gpu(VLAE(zdim, ks, ncs, stride, size(data), layer_depth=layer_depth, var=var, 
+        activation=activation))
     nl = length(model.e)
     
     ps = Flux.params(model)
