@@ -51,6 +51,17 @@ s = ArgParseSettings()
     "--last_conv"
         action = :store_true
         help = "should the last layer of decoder be a dense or a conv layer"
+    "--lr"
+        help = "learning rate"
+        arg_type = Float32
+        default = 0.001f0
+    "--gpu_id"
+        help = "GPU device switch"
+        arg_type = Int
+        default = 0
+    "--epochsize"
+        help = "number of samples used in each epoch"
+        default = nothing
     "--digit"
         help = "which digits to include"
         arg_type = Int
@@ -86,19 +97,13 @@ s = ArgParseSettings()
         arg_type = String
         nargs = 2
         default = [">=", "0"]
-    "--gpu_id"
-        help = "GPU device switch"
-        arg_type = Int
-        default = 0
-    "--epochsize"
-        help = "number of samples used in each epoch"
-        default = nothing
 end
 args = parse_args(s)
 @unpack latent_dim, channels, kernelsizes, stride, layer_depth, last_conv, seed, lambda, batchsize, nepochs, 
-    gpu_id, epochsize, savepath = args
+    gpu_id, epochsize, savepath, lr = args
 latent_count = length(channels)
 (latent_count >= length(kernelsizes)) ? nothing : error("number of kernels and channels does not match.")
+out_var = last_conv ? :conv : :dense
 if seed != nothing
 	seed = eval(Meta.parse(seed))
 end
@@ -107,8 +112,15 @@ CUDA.device!(gpu_id)
 # get filters
 filter_keys = filter(k->!(k in 
     ["latent_dim", "channels", "kernelsizes", "stride", "layer_depth", "last_conv", "seed", "lambda", 
-    "batchsize", "nepochs", "gpu_id", "epochsize", "savepath"]),keys(args))
+    "batchsize", "nepochs", "gpu_id", "epochsize", "savepath", "lr"]),keys(args))
 filter_dict = Dict(zip(filter_keys, [args[k] for k in filter_keys]))
+
+# also, set which arguments are non-default
+non_default_filters = []
+for k in filter_keys
+    argind = findfirst(map(f->f.dest_name == k,s.args_table.fields))
+    (s.args_table.fields[argind].default == filter_dict[k]) ? nothing : push!(non_default_filters, k)
+end
 
 # get the data
 dataset = "morpho_mnist"
@@ -124,7 +136,7 @@ ncs = channels
 ks = [(k,k) for k in kernelsizes][1:latent_count]
 model, training_history, reconstructions, latent_representations = 
     HierarchicalAD.train_vlae(latent_dim, batchsize, ks, ncs, stride, nepochs, tr_x, val_x, tst_x; 
-        λ=lambda, epochsize=epochsize, layer_depth=layer_depth)
+        λ=lambda, epochsize=epochsize, layer_depth=layer_depth, lr=lr, var=out_var)
 
 # compute scores
 tr_scores, val_scores, tst_scores, a_scores = 
@@ -137,7 +149,7 @@ tr_encodings, val_encodings, tst_encodings, a_encodings =
 # now save everything
 model_id = HierarchicalAD.timetag()
 experiment_args = (model_id=model_id, data=dataset, latent_count=latent_count, latent_dim=latent_dim, channels=ncs,
-    kernelsizes=ks, stride=stride, layer_depth=layer_depth, last_conv=last_conv, 
+    kernelsizes=ks, stride=stride, layer_depth=layer_depth, last_conv=last_conv, lr=lr,
     seed=seed, lambda=lambda, batchsize=batchsize, nepochs=nepochs, gpu_id=gpu_id, epochsize=epochsize)
 svn = HierarchicalAD.safe_savename(experiment_args, "bson", digits=5)
 svn = joinpath(datadir("models/$savepath"), svn)
@@ -161,6 +173,7 @@ tagsave(svn, Dict(
         :val_labels => val_y,
         :tst_labels => tst_y,
         :a_labels => a_y,
-        :savepath => svn        
+        :savepath => svn,
+        :non_default_filters => non_default_filters        
     ))
 @info "Results saved to $svn"

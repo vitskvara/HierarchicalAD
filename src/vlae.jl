@@ -5,12 +5,13 @@ struct VLAE
     f # concatenates latent vars with the rest
     xdim # (h,w,c)
     zdim # scalar
+    var # dense or conv last layer
 end
 
 Flux.@functor VLAE
 (m::VLAE)(x) = reconstruct(m, x)
 
-function VLAE(zdim::Int, ks, ncs, stride, datasize; layer_depth=1)
+function VLAE(zdim::Int, ks, ncs, stride, datasize; layer_depth=1, var=:dense)
     nl = length(ncs) # no layers
     # this captures the dimensions after each convolution
     sout = Tuple(map(j -> datasize[1:2] .- [sum(map(k->k[i]-1, ks[1:j])) for i in 1:2], 1:length(ncs))) 
@@ -46,7 +47,7 @@ function VLAE(zdim::Int, ks, ncs, stride, datasize; layer_depth=1)
     f = Tuple([Chain(Dense(zdim, ddim_d[i], relu), 
             x->reshape(x, sout[i]..., ncs_out_f[i], size(x,2))) for i in nl:-1:1])
 
-    return VLAE(e,d,g,f,datasize[1:3],zdim)
+    return VLAE(e,d,g,f,datasize[1:3],zdim,var)
 end
 
 # improved elbo
@@ -93,16 +94,16 @@ function _decoded_mu_var(m::VLAE, zs...)
 end
 
 function train_vlae(zdim, batchsize, ks, ncs, stride, nepochs, data, val_x, tst_x; 
-    λ=0.0f0, epochsize = size(data,4), layer_depth=1)
+    λ=0.0f0, epochsize = size(data,4), layer_depth=1, lr=0.001f0, var=:dense)
     gval_x = gpu(val_x[:,:,:,1:min(1000, size(val_x,4))])
     gtst_x = gpu(tst_x)
     
-    model = gpu(VLAE(zdim, ks, ncs, stride, size(data), layer_depth=layer_depth))
+    model = gpu(VLAE(zdim, ks, ncs, stride, size(data), layer_depth=layer_depth, var=var))
     nl = length(model.e)
     
     ps = Flux.params(model)
     loss(x) = -elbo(model,gpu(x)) + λ*sum(l2, ps)
-    opt = ADAM()
+    opt = ADAM(lr)
     rdata = []
     hist = []
     zs = [[] for _ in 1:nl]
