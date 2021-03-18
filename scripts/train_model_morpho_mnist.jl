@@ -106,7 +106,7 @@ args = parse_args(s)
 @unpack latent_dim, channels, kernelsizes, stride, layer_depth, last_conv, seed, lambda, batchsize, nepochs, 
     gpu_id, epochsize, savepath, lr, activation = args
 latent_count = length(channels)
-(latent_count >= length(kernelsizes)) ? nothing : error("number of kernels and channels does not match.")
+(latent_count <= length(kernelsizes)) ? nothing : error("number of kernels and channels does not match.")
 out_var = last_conv ? :conv : :dense
 if seed != nothing
 	seed = eval(Meta.parse(seed))
