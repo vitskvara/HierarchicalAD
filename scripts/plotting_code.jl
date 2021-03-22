@@ -21,6 +21,160 @@ function check_reconstructions(model, x, s=(28,28))
 end
 check_reconstructions(res::Tuple, args...) = check_reconstructions(res[1], args...)
 
+function compare_reconstructions(model, x; plotsize=(1000,300))
+    gr(size=plotsize)
+    N = size(x,4)
+    p1 = heatmap(cat(map(i->x[end:-1:1,:,1,i],1:N)..., dims=2), title="original digits")
+    r_x = cpu(reconstruct(model, gpu(x)))
+    p2 = heatmap(cat(map(i->r_x[end:-1:1,:,1,i],1:N)..., dims=2), title="reconstructed digits")
+    g_x = HierarchicalAD.generate(model, N)
+    p3 = heatmap(cat(map(i->g_x[end:-1:1,:,1,i],1:N)..., dims=2), title="generated digits")
+    plot(p1, p2, p3, layout = (3,1))
+end
+
+function plot_latents(model)
+    ps = []
+    nl = length(model.e)
+    for i in 1:nl
+        x = explore_latent(model, i)
+        x = cat([z[end:-1:1,:,1,1] for z in x]..., dims=1)
+        push!(ps, heatmap(x,title = "latent $i", color=:gist_gray))
+    end
+    plot(ps..., layout=(nl,1),size=(1500,600*nl))
+end
+
+function plot_anomalies_digit(tr_y, a_y, tr_scores, val_scores, a_scores)
+    n_digits = sort(unique(tr_y[!,:digit]))
+    a_digits = filter(x->!(x in n_digits), sort(unique(a_y[!,:digit])));
+    a_inds = [l in a_digits for l in a_y[!,:digit]]
+    ps = []
+    p=plot(tr_scores,seriestype=:stephist, title="digit_anomalies", normalize=true, lw=3, label="normal - train")
+    plot!(val_scores,seriestype=:stephist, normalize=true, lw=3, label="normal - validation")
+    plot!(a_scores[a_inds],seriestype=:stephist, normalize=true, lw=3, label="anomalous")
+    push!(ps, p)
+    for d in a_digits
+        a_inds_d = [l == d for l in a_y[!,:digit]]
+        p=plot(tr_scores,seriestype=:stephist, title="digit_anomalies", normalize=true, lw=3, label="normal")
+        plot!(a_scores[a_inds],seriestype=:stephist, normalize=true, lw=3, label="anomalous", alpha=0.3)
+        plot!(a_scores[a_inds_d],seriestype=:stephist, normalize=true, lw=3, label="anomalous - $d")
+        push!(ps, p)
+    end
+    plot(ps..., layout = (length(a_digits)+1,1), size=(500,200*(length(a_digits)+1)))
+end
+
+function plot_anomalies_other(non_default_filters, filter_dict, a_y, tr_scores, a_scores)
+    ps = []
+    for factor in filter(f->f!="digit", non_default_filters)
+        labels = a_y[!,Symbol(factor)]
+        f = filter_dict[factor]
+        ff(x) = eval(Meta.parse("!($x $(f[1]) $(f[2]))"))
+        a_inds = map(ff,  labels)
+        p=plot(tr_scores,seriestype=:stephist, title="$factor anomalies", normalize=true, lw=3, label="normal ($(f[1]) $(f[2]))")
+        plot!(a_scores[a_inds],seriestype=:stephist, normalize=true, lw=3, label="anomalous")
+        push!(ps, p)
+    end
+    nl = length(non_default_filters)-1
+    plot(ps..., layout=(nl,1), size=(500,300*nl))
+end
+
+function print_mmd_overview(category, vals, mmds)
+    println("\n")
+    println("Training latent encodings split by $category ($(vals)) identity:")
+    for i in 1:length(mmds)
+        mmd = mmds[i]
+        println("  Mean MMD[$i] = $(mean(mmd))")
+    end
+end
+
+function print_mmd_overview_anomalies(mmd_dict)
+    println("\n")
+    println("Normal and anomalous encodings by category:")
+    for (k,v) in pairs(mmd_dict)
+        println("  $k")
+        for (i,val) in enumerate(v)
+            println("    Mean MMD[$i] = $(val)")
+        end
+    end
+end
+
+function mmd_overview_other(nbins, non_default_filters, tr_y, tr_encodings, k, model)
+    ps = []
+    mmd_dict = Dict()
+    nbins = 5
+    for category in filter(f->f!="digit", non_default_filters)
+        temp_labels, bins = discretize_category(tr_y, category, nbins)
+        bins = map(x->round.(x, digits=4), bins)
+        cat_vals = sort(unique(temp_labels[!,category]))
+        p,mmds=plot_latent(cat_vals, Symbol(category), temp_labels, k, tr_encodings..., dims=[1,2])
+        print_mmd_overview(category, bins, mmds)
+        push!(ps,p)
+        mmd_dict[category] = mmds
+    end
+    nl = length(model.e)
+    nf = length(non_default_filters)-1
+    p = plot(ps..., layout=(nf,1), size=(300*nl, 400*nf))
+    p, mmd_dict
+end
+
+function plot_latent_anomalies(n_data, a_data, category, k)
+    ps = []
+    mmds = map(x->mmd(k,x[1],x[2]), zip(n_data,a_data))
+    nl = length(a_data)
+    for (mmd, n_z, a_z) in zip(mmds, n_data, a_data)
+        p=scatter(n_z[1,:], n_z[2,:], alpha=0.5, markersize=1,
+                xlims=(-3,3),ylims=(-3,3),
+                title="$(category), MMD=$(round(mean(mmd),digits=3))",
+                topmargin = 5mm, label="normal")
+        scatter!(a_z[1,:], a_z[2,:], alpha=0.5, markersize=1,
+                xlims=(-3,3),ylims=(-3,3), label="anomalous")
+        push!(ps, p)
+    end
+    p=plot(ps..., layout=(1,nl), size=(500*nl,500))
+    p, mmds
+end
+
+function mmd_overview_anomalies(tr_y, a_y, tr_encodings, a_encodings, non_default_filters, 
+    k, filter_dict)
+    ps = []
+    mmd_dict = Dict()
+
+    # digit
+    category = :digit
+    n_digits = sort(unique(tr_y[!,:digit]))
+    a_digits = filter(x->!(x in n_digits), sort(unique(a_y[!,:digit])));
+    a_inds = [l in a_digits for l in a_y[!,:digit]]
+    n_data = tr_encodings
+    a_data = map(x->x[:,a_inds],a_encodings)
+    p,mmd=plot_latent_anomalies(n_data, a_data, category, k)
+    push!(ps, p)
+    mmd_dict["$(category)_anomalies"] = mmd
+
+    # other factors
+    for factor in filter(f->f!="digit", non_default_filters)
+        f = filter_dict[factor]
+        ff(x) = eval(Meta.parse("!($x $(f[1]) $(f[2]))"))
+        a_inds = map(ff, a_y[!,Symbol(factor)])
+        n_data = tr_encodings
+        a_data = map(x->x[:,a_inds],a_encodings)
+
+        p, mmds = plot_latent_anomalies(n_data, a_data, "$factor $(f[1]) $(f[2])", k)
+        push!(ps, p)
+        mmd_dict["$(factor)_anomalies"] = mmds
+    end
+
+    # plot
+    plot(ps..., layout=(length(ps),1), size=(500*length(n_data),500*length(ps))), mmd_dict
+end
+
+
+
+
+
+
+
+
+
+######### OLD STUFF
 function animate_latent(zs...; fps::Int=5, gf="gifs/zs.gif", dims=(1,2))
     gr(size=(300*length(zs),300))
     nz = length(zs)
@@ -138,11 +292,11 @@ function plot_latent(cat_vals, category::Symbol, labels::DataFrame, zs...; dims=
     pls = []
     for iz in 1:nz
         p = scatter(zs[iz][dims[1],cat_inds[1]], zs[iz][dims[2],cat_inds[1]], 
-            label="$(cat_vals[1])", markersize=4, α=0.5,
+            label="$(cat_vals[1])", markersize=1, α=0.5,
             xlims=(-3,3),ylims=(-3,3),title="z$(iz)[$(dims[1]), $(dims[2])]")
         for (i,ci) in enumerate(cat_inds[2:end])
             scatter!(zs[iz][dims[1],ci], zs[iz][dims[2],ci], label="$(cat_vals[i+1])", 
-                markersize=4, α=0.5,
+                markersize=1, α=0.5,
                 xlims=(-3,3),ylims=(-3,3),title="z$(iz)[$(dims[1]), $(dims[2])]")
         end
         push!(pls, p)
@@ -153,25 +307,24 @@ function plot_latent(cat_vals, category::Symbol, labels::DataFrame, k::IPMeasure
         zs...; dims=(1,2))
     cat_inds = map(d->labels[!,category] .== d, cat_vals)
     
-    gr(size=(300*length(zs),300))
     nz = length(zs)
     pmmds = map(i->pairwise_mmd(k, cat_vals, category, labels, zs[i]), 1:nz)
     
     pls = []
     for iz in 1:nz
         p = scatter(zs[iz][dims[1],cat_inds[1]], zs[iz][dims[2],cat_inds[1]], 
-            label="$(cat_vals[1])", markersize=4, α=0.5,
+            label="$(cat_vals[1])", markersize=1, α=0.5,
             xlims=(-3,3),ylims=(-3,3),
             title="z$(iz)[$(dims[1]), $(dims[2])], $(category),\n mean MMD=$(round(mean(pmmds[iz]),digits=3))",
             topmargin = 5mm)
         for (i,ci) in enumerate(cat_inds[2:end])
             scatter!(zs[iz][dims[1],ci], zs[iz][dims[2],ci], label="$(cat_vals[i+1])", 
-                markersize=4, α=0.5,
+                markersize=1, α=0.5,
                 xlims=(-3,3),ylims=(-3,3))
         end
         push!(pls, p)
     end
-    plot(pls...,layout=(1,nz)), pmmds
+    plot(pls...,layout=(1,nz),size=(500*length(zs),500)), pmmds
 end
 
 function plot_latent_per_dim(z1s, z2s, labels, k::IPMeasures.AbstractKernel)
@@ -213,8 +366,8 @@ function animate_reconstructions(rdata, val_x, inds; fps=5, gf="gifs/reconstruct
 end
 animate_reconstructions(res::Tuple, args...; kwargs...) = animate_reconstructions(res[2], args...; kwargs...)
 
-function plot_training(hist)
-    gr(size=(400,200))
+function plot_training(hist; plotsize=(400,200))
+    gr(size=plotsize)
     plot(hist, xlabel="epochs", ylabel="loss", label="$(hist[end])")
 end
 plot_training(res::Tuple) = plot_training(res[2])
@@ -276,7 +429,7 @@ function discretize_category(labels, category, nbins)
     bininds = map(i->findfirst(map(b->b[1] <= labels[i,category] < b[2], bins)), 1:length(labels[!,category]));
     temp_labels = DataFrame()
     temp_labels[!,category] = bininds
-    temp_labels
+    temp_labels, bins
 end
 StatsBase.sample(x::Array{T,4}, n::Int; kwargs...) where T = x[:,:,:,sample(1:size(x,4), n; kwargs...)]
 StatsBase.sample(x::Array{T,2}, n::Int; kwargs...) where T = x[:,sample(1:size(x,2), n; kwargs...)]
