@@ -37,11 +37,23 @@ function VLAE(zdim::Int, ks, ncs, stride, datasize; layer_depth=1, var=:dense, a
     af = (typeof(activation) <: Function) ? activation : eval(Meta.parse(activation))
 
     # encoder/decoder
-    e = Chain([Conv(ks[i], ncs_in_e[i]=>ncs[i], af, stride=stride) for i in 1:nl]...)
-    d = Chain([ConvTranspose(rks[i], ncs_in_d[i]=>ncs_out_d[i], af, stride=stride) for i in 1:nl]...,
-     x->reshape(x, :, size(x,4)),
-     Dense(indim, indim+1)
-    )
+    e = Tuple([Conv(ks[i], ncs_in_e[i]=>ncs[i], af, stride=stride) for i in 1:nl])
+    if var == :dense
+	    d = Tuple([[ConvTranspose(rks[i], ncs_in_d[i]=>ncs_out_d[i], af, stride=stride) for i in 1:nl-1]...,
+	    		Chain(
+	    			ConvTranspose(rks[end], ncs_in_d[end]=>ncs_out_d[end], af, stride=stride),
+				    x->reshape(x, :, size(x,4)),
+				    Dense(indim, indim+1)
+	    		)]
+	    	)
+	elseif var == :conv
+		ncs_out_d[end] += 1
+	    d = Tuple([[ConvTranspose(rks[i], ncs_in_d[i]=>ncs_out_d[i], af, stride=stride) for i in 1:nl-1]...,
+	    			ConvTranspose(rks[end], ncs_in_d[end]=>ncs_out_d[end], stride=stride)]
+	    		)
+	else
+		error("Decoder var=$var not implemented! Try one of `[:dense, :conv]`.")
+	end    
     
     # latent extractor
     g = Tuple([Chain(x->reshape(x, :, size(x,4)), Dense(ddim[i], zdim*2)) for i in 1:nl])
@@ -62,9 +74,9 @@ function elbo(m::VLAE, x::AbstractArray{T,4}) where T
         
     # decoder pass
     μx, σx = _decoded_mu_var(m, zs...)
-    vx = vectorize(x)
+    _x = (m.var == :dense) ? vectorize(x) : x
         
-    -kldl + Flux.mean(logpdf(vx, μx, σx))
+    -kldl + Flux.mean(logpdf(_x, μx, σx))
 end
 
 function _encoded_mu_vars(m::VLAE, x)
@@ -82,7 +94,7 @@ function _encoded_mu_vars(m::VLAE, x)
 end
 
 function _decoded_mu_var(m::VLAE, zs...)
-    nl = length(m.d) - 2
+    nl = length(m.d)
     @assert length(zs) == nl
     
     h = m.f[1](zs[end])
@@ -92,7 +104,7 @@ function _decoded_mu_var(m::VLAE, zs...)
         h2 = m.f[i+1](zs[end-i])
         h = cat(h1, h2, dims=3)
     end
-    h = m.d[nl:end](h)
+    h = m.d[end](h)
     μx, σx = mu_var1(h)
 end
 
@@ -152,8 +164,8 @@ function reconstruction_probability(m::VLAE, x)
     x = gpu(x)
     zs = map(y->rptrick(y...), _encoded_mu_vars(m, x))
     μx, σx = _decoded_mu_var(m, zs...)
-    vx = vectorize(x)
-    -logpdf(vx, μx, σx)
+    _x = (m.var == :dense) ? vectorize(x) : x
+    -logpdf(_x, μx, σx)
 end
 reconstruction_probability(m::VLAE, x, L::Int) = mean([reconstruction_probability(m,x) for _ in 1:L])
 function reconstruction_probability(m::VLAE, x, L::Int, batchsize::Int)

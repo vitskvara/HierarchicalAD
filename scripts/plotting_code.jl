@@ -121,11 +121,11 @@ function plot_latent_anomalies(n_data, a_data, category, k)
     mmds = map(x->mmd(k,x[1],x[2]), zip(n_data,a_data))
     nl = length(a_data)
     for (mmd, n_z, a_z) in zip(mmds, n_data, a_data)
-        p=scatter(n_z[1,:], n_z[2,:], alpha=0.5, markersize=1,
+        p=scatter(n_z[1,:], n_z[2,:], alpha=1, markersize=2, markerstrokewidth=0,
                 xlims=(-3,3),ylims=(-3,3),
                 title="$(category), MMD=$(round(mean(mmd),digits=3))",
                 topmargin = 5mm, label="normal")
-        scatter!(a_z[1,:], a_z[2,:], alpha=0.5, markersize=1,
+        scatter!(a_z[1,:], a_z[2,:], alpha=1, markersize=2, markerstrokewidth=0,
                 xlims=(-3,3),ylims=(-3,3), label="anomalous")
         push!(ps, p)
     end
@@ -292,11 +292,11 @@ function plot_latent(cat_vals, category::Symbol, labels::DataFrame, zs...; dims=
     pls = []
     for iz in 1:nz
         p = scatter(zs[iz][dims[1],cat_inds[1]], zs[iz][dims[2],cat_inds[1]], 
-            label="$(cat_vals[1])", markersize=1, α=0.5,
+            label="$(cat_vals[1])", markersize=2, markerstrokewidth=0, α=0.5,
             xlims=(-3,3),ylims=(-3,3),title="z$(iz)[$(dims[1]), $(dims[2])]")
         for (i,ci) in enumerate(cat_inds[2:end])
             scatter!(zs[iz][dims[1],ci], zs[iz][dims[2],ci], label="$(cat_vals[i+1])", 
-                markersize=1, α=0.5,
+                markersize=2, α=0.5, markerstrokewidth=0,
                 xlims=(-3,3),ylims=(-3,3),title="z$(iz)[$(dims[1]), $(dims[2])]")
         end
         push!(pls, p)
@@ -313,13 +313,13 @@ function plot_latent(cat_vals, category::Symbol, labels::DataFrame, k::IPMeasure
     pls = []
     for iz in 1:nz
         p = scatter(zs[iz][dims[1],cat_inds[1]], zs[iz][dims[2],cat_inds[1]], 
-            label="$(cat_vals[1])", markersize=1, α=0.5,
+            label="$(cat_vals[1])", markersize=2, α=0.5, markerstrokewidth=0,
             xlims=(-3,3),ylims=(-3,3),
             title="z$(iz)[$(dims[1]), $(dims[2])], $(category),\n mean MMD=$(round(mean(pmmds[iz]),digits=3))",
             topmargin = 5mm)
         for (i,ci) in enumerate(cat_inds[2:end])
             scatter!(zs[iz][dims[1],ci], zs[iz][dims[2],ci], label="$(cat_vals[i+1])", 
-                markersize=1, α=0.5,
+                markersize=2, α=0.5, markerstrokewidth=0,
                 xlims=(-3,3),ylims=(-3,3))
         end
         push!(pls, p)

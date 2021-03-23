@@ -11,6 +11,8 @@ logpdf(x::AbstractArray{T,N}, μ::AbstractArray{T,N}, σ2::AbstractArray{T,N}) w
     - vec(sum(((x - μ).^2) ./ σ2 .+ log.(σ2), dims=1)) .+ size(x,1)*log(T(2π)) / T(2)
 logpdf(x::AbstractArray{T,N}, μ::AbstractArray{T,N}, σ2::T) where T where N = 
     - vec(sum(((x - μ).^2) ./ σ2 .+ log(σ2), dims=1)) .+ size(x,1)*log(T(2π)) / T(2)
+logpdf(x::AbstractArray{T,4}, μ::AbstractArray{T,4}, σ2::AbstractArray{T,4}) where T = 
+    - vec(sum((x - μ).^2 ./ σ2 .+ log.(σ2), dims = (1,2,3))) .+ prod(size(x)[1:3])*log(T(2π)) / T(2)
 
 function mu_var(x)
     N = floor(Int, size(x,1)/2)
@@ -19,9 +21,14 @@ function mu_var(x)
     return μ, σ
 end
 
-function mu_var1(x)
+function mu_var1(x::AbstractArray{T,2}) where T
     μ = x[1:end-1,:]
     σ = softplus_safe.(x[end:end,:])
+    return μ, σ
+end
+function mu_var1(x::AbstractArray{T,4}) where T
+    μ = x[:,:,1:end-1,:]
+    σ = softplus_safe.(Flux.mean(x[:,:,end:end,:], dims=(1,2,3)))
     return μ, σ
 end
 

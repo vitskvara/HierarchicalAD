@@ -102,6 +102,7 @@ function evaluate_model(modeldata, modelfile)
 	p,mmds=plot_latent(cat_vals, category, tr_y, k, tr_encodings..., dims=[1,2])
 	plot(p)
 	svn = joinpath(plotpath, "$(model_id)_06_encodings_train_digits.png")
+	savefig(svn)
 	@info "Saved $svn"
 	print_mmd_overview(category, cat_vals, mmds)
 	mmd_dict[String(category)] = mmds
@@ -111,6 +112,7 @@ function evaluate_model(modeldata, modelfile)
 	p, mmds = mmd_overview_other(nbins, non_default_filters, tr_y, tr_encodings, k, model) 
 	plot(p)
 	svn = joinpath(plotpath, "$(model_id)_07_encodings_train_other.png")
+	savefig(svn)
 	@info "Saved $svn"
 	mmd_dict = merge(mmd_dict, mmds)
 
@@ -120,6 +122,7 @@ function evaluate_model(modeldata, modelfile)
 	print_mmd_overview_anomalies(mmds)
 	plot(p)
 	svn = joinpath(plotpath, "$(model_id)_08_encodings_anomalies.png")
+	savefig(svn)
 	@info "Saved $svn"
 	mmd_dict = merge(mmd_dict, mmds)
 

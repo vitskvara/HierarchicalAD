@@ -51,6 +51,7 @@ end
 vectorize(x::AbstractArray{T,4}) where T = reshape(x, :, size(x,4))
 devectorize(x::AbstractArray{T,2}, w, h) where T = reshape(x, w, h, 1, :)
 devectorize(x::AbstractArray{T,2}, w, h, c) where T = reshape(x, w, h, c, :)
+devectorize(x::AbstractArray{T,4}, args...; kwargs...) where T = x
 
 function draw(x::AbstractArray{T,4}) where T
     return hcat(array_to_img_bw.([x[:,:,:,i] for i in 1:size(x,4)])...)
