@@ -15,9 +15,12 @@ using DataFrames
 using MLDatasets
 using Random
 using Dates
+using ValueHistories
 
 include("digits.jl")
+include("abstract_vlae.jl")
 include("vlae.jl")
+include("fvlae.jl")
 include("model_utils.jl")
 include("training_utils.jl")
 include("experiments.jl")

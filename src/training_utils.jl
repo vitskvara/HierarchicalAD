@@ -34,3 +34,6 @@ function load_model_gpu(id, modelpath)
     res = load_model(id, modelpath)
     return gpu(res[1]), res[2], res[3], res[4], res[5]
 end
+
+sample_tensor(x::AbstractArray{T,4}, n::Int; kwargs...) where T = x[:,:,:,sample(1:size(x,4), n; kwargs...)]
+sample_tensor(x::AbstractArray{T,2}, n::Int; kwargs...) where T = x[:,sample(1:size(x,2), n; kwargs...)]

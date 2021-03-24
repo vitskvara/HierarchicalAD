@@ -4,6 +4,7 @@ using ArgParse
 using CSV, DataFrames
 using HierarchicalAD
 using FileIO, BSON
+using VlaueHistories
 using Flux
 using CUDA
 CUDA.device!(1)
