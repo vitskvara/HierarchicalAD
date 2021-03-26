@@ -72,3 +72,16 @@ reconstruction_probability(m::AbstractVLAE, x, L::Int) = mean([reconstruction_pr
 function reconstruction_probability(m::AbstractVLAE, x, L::Int, batchsize::Int)
     vcat(map(b->cpu(reconstruction_probability(m, b, L)), Flux.Data.DataLoader(x, batchsize=batchsize))...)
 end
+
+function generate(m::AbstractVLAE, n::Int)
+    nl = length(m.e)
+    zs = [randn(Float32, m.zdim, n) for _ in 1:nl]
+    
+    if is_gpu(m)
+        zs = gpu(zs)
+    end
+    
+    cpu(decode(m, zs...))
+end
+
+is_gpu(m::AbstractVLAE) = typeof(m.g[1][2].W) <: Flux.CUDA.CuArray

@@ -25,6 +25,6 @@ include("model_utils.jl")
 include("training_utils.jl")
 include("experiments.jl")
 
-export VLAE
+export VLAE, FVLAE, AbstractVLAE
 
 end

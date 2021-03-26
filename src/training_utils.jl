@@ -1,16 +1,3 @@
-is_gpu(m::VLAE) = typeof(m.g[1][2].W) <: Flux.CUDA.CuArray
-
-function generate(m::VLAE, n::Int)
-    nl = length(m.e)
-    zs = [randn(Float32, m.zdim, n) for _ in 1:nl]
-    
-    if is_gpu(m)
-        zs = gpu(zs)
-    end
-    
-    cpu(decode(m, zs...))
-end
-
 function timetag()
     n = string(now())
     reduce(replace, ["-" => "", ":" => "", "T" => "", "." => ""]; init=n)

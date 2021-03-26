@@ -368,11 +368,18 @@ animate_reconstructions(res::Tuple, args...; kwargs...) = animate_reconstruction
 
 function plot_training(hist; plotsize=(400,200))
     gr(size=plotsize)
-    plot(hist, xlabel="epochs", ylabel="loss", label="$(hist[end])")
+    ks = collect(keys(hist))
+    nk = length(ks)
+    ps = []
+    for (ik,k) in enumerate(ks)
+        vals = get(hist, k)
+        push!(ps, plot(vals..., xlabel="epochs", ylabel=k, label="$k = $(vals[2][end])"))
+    end
+    plot(ps..., layout=(nk,1), size=(400, 300*nk))
 end
 plot_training(res::Tuple) = plot_training(res[2])
 
-function explore_latent(m::VLAE, i)
+function explore_latent(m::AbstractVLAE, i)
     nl = length(m.e)
     rows = []
     for xx in -3:0.5:3.0

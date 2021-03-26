@@ -4,7 +4,7 @@ using ArgParse
 using CSV, DataFrames
 using HierarchicalAD
 using FileIO, BSON
-using VlaueHistories
+using ValueHistories
 using Flux
 using CUDA
 CUDA.device!(1)
@@ -29,6 +29,10 @@ function evaluate_model(modeldata, modelfile)
 	@info "Loaded $modelfile."
 	println("  model_id => $(modeldata[:experiment_args].model_id)")
 	println("  data => $(modeldata[:experiment_args].data)")
+	println("  experiment settings => ")
+	for (k,v) in pairs(modeldata[:experiment_args])
+		println("    $k = $v")
+	end
 	println("  non-default filters => ")
 	for f in modeldata[:non_default_filters]
 		fv = modeldata[:filter_dict][f]

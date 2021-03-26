@@ -115,19 +115,23 @@ function train_fvlae(zdim, hdim, batchsize, ks, ncs, str, nepochs, data, val_x, 
 			param_update!(closs, cps, x, copt)
 		end
 
-		ael = Flux.mean(map(x->aeloss(x), Flux.Data.DataLoader(val_x, batchsize=batchsize)))
-		cl = Flux.mean(map(x->closs(x), Flux.Data.DataLoader(val_x, batchsize=batchsize)))
-		#elbo = Flux.mean(map(x->aeloss(x), Flux.Data.DataLoader(val_x, batchsize=batchsize)))
-		#tc = Flux.mean(map(x->aeloss(x), Flux.Data.DataLoader(val_x, batchsize=batchsize)))
+		# logging
+		Flux.Zygote.ignore() do 
+			ael = Flux.mean(map(x->cpu(aeloss(x)), Flux.Data.DataLoader(val_x, batchsize=batchsize)))
+			cl = Flux.mean(map(x->cpu(closs(x)), Flux.Data.DataLoader(val_x, batchsize=batchsize)))
 		
-		println("Epoch $(epoch)/$(nepochs), validation loss: AE = $ael, C = $cl")
-		for i in 1:nl
-			z = encode(model, gval_x, i)
-			push!(zs[i], cpu(z))
+			#elbo = Flux.mean(map(x->aeloss(x), Flux.Data.DataLoader(val_x, batchsize=batchsize)))
+			#tc = Flux.mean(map(x->aeloss(x), Flux.Data.DataLoader(val_x, batchsize=batchsize)))
+			
+			println("Epoch $(epoch)/$(nepochs), validation loss: AE = $ael, C = $cl")
+			for i in 1:nl
+				z = encode(model, gval_x, i)
+				push!(zs[i], cpu(z))
+			end
+			push!(hist, :aeloss, epoch, ael)
+			push!(hist, :closs, epoch, cl)
+			push!(rdata, cpu(reconstruct(model, gval_x)))
 		end
-		push!(hist, :aeloss, epoch, aeloss)
-		push!(hist, :closs, epoch, closs)
-		push!(rdata, cpu(reconstruct(model, gval_x)))
 	end
 	
 	return model, hist, rdata, zs
