@@ -6,21 +6,26 @@ struct VLAE <: AbstractVLAE
     xdim # (h,w,c)
     zdim # scalar
     var # dense or conv last layer
+    xdist # gaussian or bernoulli
 end
 
 Flux.@functor VLAE
 (m::VLAE)(x) = reconstruct(m, x)
 
 """
-	VLAE(zdim::Int, ks, ncs, stride, datasize; layer_depth=1, var=:dense, activation="relu")
+	VLAE(zdim::Int, ks, ncs, stride, datasize; layer_depth=1, var=:dense, activation="relu",
+        xdist=:gaussian)
 
 Basic VLAE constructor.
 """
-function VLAE(zdim::Int, ks, ncs, strd, datasize; var=:dense, kwargs...)
-	# get encoder, decoder and latent extractors and reshapers
-	e,d,g,f = basic_model_constructor(zdim, ks, ncs, strd, datasize; var=var, kwargs...)
+function VLAE(zdim::Int, ks, ncs, strd, datasize; var=:dense, xdist=:gaussian, kwargs...)
+    (xdist in [:gausiian, :bernoulli]) ? nothing : 
+        error("xdist must be either :gaussian or :bernoulli")
 
-    return VLAE(e,d,g,f,datasize[1:3],zdim,var)
+	# get encoder, decoder and latent extractors and reshapers
+	e,d,g,f = basic_model_constructor(zdim, ks, ncs, strd, datasize; var=var, xdist=xdist, kwargs...)
+
+    return VLAE(e,d,g,f,datasize[1:3],zdim,var,xdist)
 end
 
 """

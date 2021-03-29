@@ -121,11 +121,11 @@ function plot_latent_anomalies(n_data, a_data, category, k)
     mmds = map(x->mmd(k,x[1],x[2]), zip(n_data,a_data))
     nl = length(a_data)
     for (mmd, n_z, a_z) in zip(mmds, n_data, a_data)
-        p=scatter(n_z[1,:], n_z[2,:], alpha=1, markersize=2, markerstrokewidth=0,
+        p=Plots.scatter(n_z[1,:], n_z[2,:], alpha=1, markersize=2, markerstrokewidth=0,
                 xlims=(-3,3),ylims=(-3,3),
                 title="$(category), MMD=$(round(mean(mmd),digits=3))",
                 topmargin = 5mm, label="normal")
-        scatter!(a_z[1,:], a_z[2,:], alpha=1, markersize=2, markerstrokewidth=0,
+        Plots.scatter!(a_z[1,:], a_z[2,:], alpha=1, markersize=2, markerstrokewidth=0,
                 xlims=(-3,3),ylims=(-3,3), label="anomalous")
         push!(ps, p)
     end
@@ -183,7 +183,7 @@ function animate_latent(zs...; fps::Int=5, gf="gifs/zs.gif", dims=(1,2))
     anim = @animate for ie in 1:ne
         ps = []
         for iz in 1:nz
-            p = scatter(zs[iz][ie][dims[1],:], zs[iz][ie][dims[2],:], legend=false, markersize=4, α=1,
+            p = Plots.scatter(zs[iz][ie][dims[1],:], zs[iz][ie][dims[2],:], legend=false, markersize=4, α=1,
                 xlims=(-3,3),ylims=(-3,3),title="z$(iz)[$(dims[1]), $(dims[2])], epoch $ie")
             push!(ps, p)
         end
@@ -203,11 +203,11 @@ function animate_latent(cat_vals, cat_ind::Int, val_labels, zs...; fps::Int=5, g
     anim = @animate for ie in 1:ne
         pls = []
         for iz in 1:nz
-            p = scatter(zs[iz][ie][dims[1],cat_inds[1]], zs[iz][ie][dims[2],cat_inds[1]], 
+            p = Plots.scatter(zs[iz][ie][dims[1],cat_inds[1]], zs[iz][ie][dims[2],cat_inds[1]], 
                 label="$(cat_vals[1])", markersize=4, α=0.7,
                 xlims=(-3,3),ylims=(-3,3),title="z$(iz)[$(dims[1]), $(dims[2])], epoch $ie")
             for (i,ci) in enumerate(cat_inds[2:end])
-                scatter!(zs[iz][ie][dims[1],ci], zs[iz][ie][dims[2],ci], label="$(cat_vals[i+1])", 
+                Plots.scatter!(zs[iz][ie][dims[1],ci], zs[iz][ie][dims[2],ci], label="$(cat_vals[i+1])", 
                     markersize=4, α=0.7,
                     xlims=(-3,3),ylims=(-3,3),title="z$(iz)[$(dims[1]), $(dims[2])], epoch $ie")
             end
@@ -226,11 +226,11 @@ function plot_latent(cat_vals, cat_ind::Int, val_labels, zs...; dims=(1,2))
     
     pls = []
     for iz in 1:nz
-        p = scatter(zs[iz][ne][dims[1],cat_inds[1]], zs[iz][ne][dims[2],cat_inds[1]], 
+        p = Plots.scatter(zs[iz][ne][dims[1],cat_inds[1]], zs[iz][ne][dims[2],cat_inds[1]], 
             label="$(cat_vals[1])", markersize=4, α=0.7,
             xlims=(-3,3),ylims=(-3,3),title="z$(iz)[$(dims[1]), $(dims[2])], epoch $ne")
         for (i,ci) in enumerate(cat_inds[2:end])
-            scatter!(zs[iz][ne][dims[1],ci], zs[iz][ne][dims[2],ci], label="$(cat_vals[i+1])", 
+            Plots.scatter!(zs[iz][ne][dims[1],ci], zs[iz][ne][dims[2],ci], label="$(cat_vals[i+1])", 
                 markersize=4, α=0.7,
                 xlims=(-3,3),ylims=(-3,3),title="z$(iz)[$(dims[1]), $(dims[2])], epoch $ne")
         end
@@ -248,13 +248,13 @@ function plot_latent(cat_vals, cat_ind::Int, val_labels, k::IPMeasures.AbstractK
     pls = []
     for iz in 1:nz
         z1 = zs[iz][:,cat_inds[1]]
-        p = scatter(z1[dims[1],:], z1[dims[2],:], 
+        p = Plots.scatter(z1[dims[1],:], z1[dims[2],:], 
             label="$(cat_vals[1])", markersize=4, α=0.7,
             xlims=(-3,3),ylims=(-3,3))
         for (i,ci) in enumerate(cat_inds[2:end])
             z2 = zs[iz][:,ci]
             mmd_val = mmd(k, z1, z2)
-            scatter!(z2[dims[1],:], z2[dims[2],:], label="$(cat_vals[i+1])", 
+            Plots.scatter!(z2[dims[1],:], z2[dims[2],:], label="$(cat_vals[i+1])", 
                 markersize=4, α=0.7,
                 xlims=(-3,3),ylims=(-3,3),title="z$(iz)[$(dims[1]), $(dims[2])],\n MMD=$(round(mmd_val, digits=5))")
         end
@@ -270,12 +270,12 @@ function plot_latent(z1s, z2s, labels, k::IPMeasures.AbstractKernel; dims=(1,2))
     mmds = []
     for iz in 1:nz
         z1 = z1s[iz]
-        p = scatter(z1[dims[1],:], z1[dims[2],:], 
+        p = Plots.scatter(z1[dims[1],:], z1[dims[2],:], 
             label=labels[1], markersize=4, α=0.7,
             xlims=(-3,3),ylims=(-3,3))
         z2 = z2s[iz]
         mmd_val = mmd(k, z1, z2)
-        scatter!(z2[dims[1],:], z2[dims[2],:], label=labels[2], 
+        Plots.scatter!(z2[dims[1],:], z2[dims[2],:], label=labels[2], 
                 markersize=4, α=0.7,
                 xlims=(-3,3),ylims=(-3,3),title="z$(iz)[$(dims[1]), $(dims[2])],\n MMD=$(round(mmd_val, digits=5))")
         push!(pls, p)
@@ -291,11 +291,11 @@ function plot_latent(cat_vals, category::Symbol, labels::DataFrame, zs...; dims=
     
     pls = []
     for iz in 1:nz
-        p = scatter(zs[iz][dims[1],cat_inds[1]], zs[iz][dims[2],cat_inds[1]], 
+        p = Plots.scatter(zs[iz][dims[1],cat_inds[1]], zs[iz][dims[2],cat_inds[1]], 
             label="$(cat_vals[1])", markersize=2, markerstrokewidth=0, α=0.5,
             xlims=(-3,3),ylims=(-3,3),title="z$(iz)[$(dims[1]), $(dims[2])]")
         for (i,ci) in enumerate(cat_inds[2:end])
-            scatter!(zs[iz][dims[1],ci], zs[iz][dims[2],ci], label="$(cat_vals[i+1])", 
+            Plots.scatter!(zs[iz][dims[1],ci], zs[iz][dims[2],ci], label="$(cat_vals[i+1])", 
                 markersize=2, α=0.5, markerstrokewidth=0,
                 xlims=(-3,3),ylims=(-3,3),title="z$(iz)[$(dims[1]), $(dims[2])]")
         end
@@ -312,13 +312,13 @@ function plot_latent(cat_vals, category::Symbol, labels::DataFrame, k::IPMeasure
     
     pls = []
     for iz in 1:nz
-        p = scatter(zs[iz][dims[1],cat_inds[1]], zs[iz][dims[2],cat_inds[1]], 
+        p = Plots.scatter(zs[iz][dims[1],cat_inds[1]], zs[iz][dims[2],cat_inds[1]], 
             label="$(cat_vals[1])", markersize=2, α=0.5, markerstrokewidth=0,
             xlims=(-3,3),ylims=(-3,3),
             title="z$(iz)[$(dims[1]), $(dims[2])], $(category),\n mean MMD=$(round(mean(pmmds[iz]),digits=3))",
             topmargin = 5mm)
         for (i,ci) in enumerate(cat_inds[2:end])
-            scatter!(zs[iz][dims[1],ci], zs[iz][dims[2],ci], label="$(cat_vals[i+1])", 
+            Plots.scatter!(zs[iz][dims[1],ci], zs[iz][dims[2],ci], label="$(cat_vals[i+1])", 
                 markersize=2, α=0.5, markerstrokewidth=0,
                 xlims=(-3,3),ylims=(-3,3))
         end
@@ -408,8 +408,8 @@ function explore_one_sample(ind, ws, test_labels, test_data, zns, test_zs; kwarg
     
     ps = []
     for i in 1:length(zns)
-        p=scatter(zns[i][1,:],zns[i][2,:], title="$(wzs[i])"; kwargs...)
-        scatter!(test_zs[i][1,ind:ind], test_zs[i][2,ind:ind]; kwargs...)
+        p=Plots.scatter(zns[i][1,:],zns[i][2,:], title="$(wzs[i])"; kwargs...)
+        Plots.scatter!(test_zs[i][1,ind:ind], test_zs[i][2,ind:ind]; kwargs...)
         push!(ps, p)
     end
     plot(ps..., layout=(1,length(zns)))

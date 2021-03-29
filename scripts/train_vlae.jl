@@ -11,10 +11,6 @@ s = ArgParseSettings()
         arg_type = Int
         default = 2
         help = "dimensionality of latent spaces"
-    "hdim"
-        arg_type = Int
-        default = 8
-        help = "width of the hidden layers in the discriminator"
     "channels"
         arg_type = Int
         nargs = '*'
@@ -44,10 +40,6 @@ s = ArgParseSettings()
         default = 20
         arg_type = Int
         help = "number of epochs"
-    "--gamma"
-        default = 0.1f0
-        arg_type = Float32
-        help = "scaling constant of total correlation in loss"
     "--lambda"
         default = 0f0
         arg_type = Float32
@@ -60,10 +52,6 @@ s = ArgParseSettings()
         default = "relu"
         arg_type = String
         help = "activation function"
-    "--xdist"
-        default = :gaussian
-        arg_type = Symbol
-        help = "decoder distribution, one of gaussian/bernoulli"
     "--last_conv"
         action = :store_true
         help = "should the last layer of decoder be a dense or a conv layer"
@@ -115,21 +103,20 @@ s = ArgParseSettings()
         default = [">=", "0"]
 end
 args = parse_args(s)
-@unpack latent_dim, hdim, channels, kernelsizes, stride, layer_depth, last_conv, seed, 
-    lambda, batchsize, nepochs, gpu_id, epochsize, savepath, lr, activation, gamma, xdist = args
+@unpack latent_dim, channels, kernelsizes, stride, layer_depth, last_conv, seed, lambda, batchsize, nepochs, 
+    gpu_id, epochsize, savepath, lr, activation = args
 latent_count = length(channels)
 (latent_count <= length(kernelsizes)) ? nothing : error("number of kernels and channels does not match.")
 out_var = last_conv ? :conv : :dense
 if seed != nothing
-    seed = eval(Meta.parse(seed))
+	seed = eval(Meta.parse(seed))
 end
 CUDA.device!(gpu_id)
 
 # get filters
 filter_keys = filter(k->!(k in 
-    ["latent_dim", "hdim", "channels", "kernelsizes", "stride", "layer_depth", "last_conv", 
-    "seed", "lambda", "batchsize", "nepochs", "gpu_id", "epochsize", "savepath", "lr", 
-    "activation", "gamma", "xdist"]),keys(args))
+    ["latent_dim", "channels", "kernelsizes", "stride", "layer_depth", "last_conv", "seed", "lambda", 
+    "batchsize", "nepochs", "gpu_id", "epochsize", "savepath", "lr", "activation"]),keys(args))
 filter_dict = Dict(zip(filter_keys, [args[k] for k in filter_keys]))
 
 # also, set which arguments are non-default
@@ -152,53 +139,48 @@ end
 ncs = channels
 ks = [(k,k) for k in kernelsizes][1:latent_count]
 model, training_history, reconstructions, latent_representations = 
-    HierarchicalAD.train_fvlae(latent_dim, hdim, batchsize, ks, ncs, stride, nepochs, tr_x, 
-        val_x, tst_x; λ=lambda, γ=gamma, epochsize=epochsize, layer_depth=layer_depth, lr=lr, 
-        var=out_var, activation=activation, xdist=xdist)
+    HierarchicalAD.train_vlae(latent_dim, batchsize, ks, ncs, stride, nepochs, tr_x, val_x, tst_x; 
+        λ=lambda, epochsize=epochsize, layer_depth=layer_depth, lr=lr, var=out_var, activation=activation)
 
-Flux.Zygote.ignore() do
-    # compute scores
-    tr_scores, val_scores, tst_scores, a_scores = 
-        map(x->HierarchicalAD.reconstruction_probability(gpu(model), x, 5, 16), (tr_x, val_x, tst_x, a_x))
+# compute scores
+tr_scores, val_scores, tst_scores, a_scores = 
+    map(x->HierarchicalAD.reconstruction_probability(gpu(model), x, 5, batchsize), (tr_x, val_x, tst_x, a_x))
 
-    # compute encodings
-    tr_encodings, val_encodings, tst_encodings, a_encodings = 
-        map(x->HierarchicalAD.encode_all(model,x,batchsize),(tr_x, val_x, tst_x, a_x))
+# compute encodings
+tr_encodings, val_encodings, tst_encodings, a_encodings = 
+    map(x->HierarchicalAD.encode_all(model,x,batchsize),(tr_x, val_x, tst_x, a_x))
 
-
-    # now save everything
-    model_id = HierarchicalAD.timetag()
-    experiment_args = (model_id=model_id, data=dataset, latent_count=latent_count, 
-        latent_dim=latent_dim, channels=ncs, kernelsizes=ks, stride=stride, layer_depth=layer_depth, 
-        last_conv=last_conv, lr=lr, activation=activation, seed=seed, lambda=lambda, 
-        batchsize=batchsize, nepochs=nepochs, gpu_id=gpu_id, epochsize=epochsize, gamma=gamma, 
-        hdim=hdim, xdist=xdist)
-    save_args = (model_id=model_id, data=dataset, model="fvlae", latent_dim=latent_dim,
-        channels=channels,gamma=gamma, lambda=lambda, activation=activation, xdist=xdist)
-    svn = HierarchicalAD.safe_savename(save_args, "bson", digits=5)
-    svn = joinpath(datadir("models/$savepath"), svn)
-    tagsave(svn, Dict(
-            :model => cpu(model),
-            :experiment_args => experiment_args,
-            :filter_dict => filter_dict,
-            :training_history => training_history,
-            :reconstructions => reconstructions,
-            :latent_representations => latent_representations,
-            :ratios => ratios,
-            :tr_scores => tr_scores,
-            :val_scores => val_scores,
-            :tst_scores => tst_scores,
-            :a_scores => a_scores,
-            :tr_encodings => tr_encodings, 
-            :val_encodings => val_encodings, 
-            :tst_encodings => tst_encodings, 
-            :a_encodings => a_encodings,
-            :tr_labels => tr_y,
-            :val_labels => val_y,
-            :tst_labels => tst_y,
-            :a_labels => a_y,
-            :savepath => svn,
-            :non_default_filters => non_default_filters        
-        ))
-    @info "Results saved to $svn"
-end
+# now save everything
+model_id = HierarchicalAD.timetag()
+experiment_args = (model_id=model_id, data=dataset, latent_count=latent_count, latent_dim=latent_dim, 
+    channels=ncs, kernelsizes=ks, stride=stride, layer_depth=layer_depth, last_conv=last_conv, lr=lr, 
+    activation=activation, seed=seed, lambda=lambda, batchsize=batchsize, nepochs=nepochs, gpu_id=gpu_id, 
+    epochsize=epochsize)
+save_args = (model_id=model_id, data=dataset, model="vlae", latent_dim=latent_dim,
+    channels=channels,gamma=gamma, lambda=lambda, activation=activation)
+svn = HierarchicalAD.safe_savename(save_args, "bson", digits=5)
+svn = joinpath(datadir("models/$savepath"), svn)
+tagsave(svn, Dict(
+        :model => cpu(model),
+        :experiment_args => experiment_args,
+        :filter_dict => filter_dict,
+        :training_history => training_history,
+        :reconstructions => reconstructions,
+        :latent_representations => latent_representations,
+        :ratios => ratios,
+        :tr_scores => tr_scores,
+        :val_scores => val_scores,
+        :tst_scores => tst_scores,
+        :a_scores => a_scores,
+        :tr_encodings => tr_encodings, 
+        :val_encodings => val_encodings, 
+        :tst_encodings => tst_encodings, 
+        :a_encodings => a_encodings,
+        :tr_labels => tr_y,
+        :val_labels => val_y,
+        :tst_labels => tst_y,
+        :a_labels => a_y,
+        :savepath => svn,
+        :non_default_filters => non_default_filters        
+    ))
+@info "Results saved to $svn"

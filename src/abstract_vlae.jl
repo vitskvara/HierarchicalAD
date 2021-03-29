@@ -8,10 +8,14 @@ function elbo(m::AbstractVLAE, x::AbstractArray{T,4}) where T
     kldl = sum(map(y->Flux.mean(kld(y...)), μzs_σzs))
         
     # decoder pass
-    μx, σx = _decoded_mu_var(m, zs...)
-    _x = (m.var == :dense) ? vectorize(x) : x
-        
-    -kldl + Flux.mean(logpdf(_x, μx, σx))
+    if m.xdist == :gaussian
+        μx, σx = _decoded_mu_var(m, zs...)
+        _x = (m.var == :dense) ? vectorize(x) : x        
+        return -kldl + Flux.mean(logpdf(_x, μx, σx))
+    else # bernoulli
+        _x = _decoder_out(m, zs...)
+        return -kldl - Flux.mean(bernoulli_prob(_x, x))
+    end
 end
 
 function _encoded_mu_vars(m::AbstractVLAE, x)
@@ -28,7 +32,7 @@ function _encoded_mu_vars(m::AbstractVLAE, x)
     mu_vars
 end
 
-function _decoded_mu_var(m::AbstractVLAE, zs...)
+function _decoder_out(m::AbstractVLAE, zs...)
     nl = length(m.d)
     @assert length(zs) == nl
     
@@ -40,6 +44,9 @@ function _decoded_mu_var(m::AbstractVLAE, zs...)
         h = cat(h1, h2, dims=3)
     end
     h = m.d[end](h)
+end
+function _decoded_mu_var(m::AbstractVLAE, zs...)
+    h = _decoder_out(m, zs...)
     μx, σx = mu_var1(h)
 end
 
@@ -54,9 +61,13 @@ function encode_all(m::AbstractVLAE, x, batchsize::Int)
     [cat([y[i] for y in encs]..., dims=2) for i in 1:length(encs[1])]
 end
 
-function decode(m::AbstractVLAE, zs...) 
-    μx, σx = _decoded_mu_var(m, zs...)
-    devectorize(rptrick(μx, σx), m.xdim...)
+function decode(m::AbstractVLAE, zs...)
+    if m.xdist == :gaussian 
+        μx, σx = _decoded_mu_var(m, zs...)
+        return devectorize(rptrick(μx, σx), m.xdim...)
+    else # bernoulli
+        return _decoder_out(m, zs...)
+    end
 end
 
 reconstruct(m::AbstractVLAE, x) = decode(m, encode_all(m, x)...)
@@ -64,9 +75,14 @@ reconstruct(m::AbstractVLAE, x) = decode(m, encode_all(m, x)...)
 function reconstruction_probability(m::AbstractVLAE, x)  
     x = gpu(x)
     zs = map(y->rptrick(y...), _encoded_mu_vars(m, x))
-    μx, σx = _decoded_mu_var(m, zs...)
-    _x = (m.var == :dense) ? vectorize(x) : x
-    -logpdf(_x, μx, σx)
+    if m.xdist == :gaussian
+        μx, σx = _decoded_mu_var(m, zs...)
+        _x = (m.var == :dense) ? vectorize(x) : x
+        return -logpdf(_x, μx, σx)
+    else # bernoulli
+        xh = _decoder_out(m, zs...)
+        return bernoulli_prob(xh, x)
+    end
 end
 reconstruction_probability(m::AbstractVLAE, x, L::Int) = mean([reconstruction_probability(m,x) for _ in 1:L])
 function reconstruction_probability(m::AbstractVLAE, x, L::Int, batchsize::Int)

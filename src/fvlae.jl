@@ -7,26 +7,30 @@ struct FVLAE <: AbstractVLAE
     xdim # (h,w,c)
     zdim # scalar
     var # dense or conv last layer
+    xdist
 end
 
 Flux.@functor FVLAE
 (m::FVLAE)(x) = reconstruct(m, x)
 
 """
-	FVLAE(zdim::Int, hdim::Int, ks, ncs, stride, datasize; 
-		discriminator_nlayers::Int=3, layer_depth::Int=1, var=:dense, activation="relu")
+	FVLAE(zdim::Int, hdim::Int, ks, ncs, stride, datasize; discriminator_nlayers::Int=3, 
+		layer_depth::Int=1, var=:dense, activation="relu", xdist=:gaussian)
 
 Factor VLAE constructor.
 """
 function FVLAE(zdim::Int, hdim::Int, ks, ncs, str, datasize; discriminator_nlayers::Int=3,
-		var=:dense, kwargs...)
+		var=:dense, xdist=:gaussian, kwargs...)
+	(xdist in [:gaussian, :bernoulli]) ? nothing : 
+		error("xdist must be either :gaussian or :bernoulli")
+
 	# get encoder, decoder and latent extractors and reshapers
-	e,d,g,f = basic_model_constructor(zdim, ks, ncs, str, datasize; var=var, kwargs...)
+	e,d,g,f = basic_model_constructor(zdim, ks, ncs, str, datasize; var=var, xdist=xdist, kwargs...)
 
 	# now construct the critic (discriminator)
 	c = discriminator_constructor(zdim*length(ks), hdim, discriminator_nlayers; kwargs...)
 
-    return FVLAE(e,d,c,g,f,datasize[1:3],zdim,var)
+    return FVLAE(e,d,c,g,f,datasize[1:3],zdim,var,xdist)
 end
 
 dloss(d,z::AbstractArray{T,2},zp::AbstractArray{T,2}) where T  = 
@@ -43,9 +47,15 @@ function factor_aeloss(m, x::AbstractArray{T,4}, γ::Float32) where T
 	kldl = sum(map(y->Flux.mean(kld(y...)), μzs_σzs))
 		
 	# decoder pass
-	μx, σx = _decoded_mu_var(m, zs...)
-	_x = (m.var == :dense) ? vectorize(x) : x
-	elbo = -kldl + Flux.mean(logpdf(_x, μx, σx))
+	if m.xdist == :gaussian
+		μx, σx = _decoded_mu_var(m, zs...)
+		_x = (m.var == :dense) ? vectorize(x) : x
+		px = Flux.mean(logpdf(_x, μx, σx))
+	else # bernoulli
+		_x = _decoder_out(m, zs...)
+		px = -Flux.mean(bernoulli_prob(_x, x))
+	end
+	elbo = -kldl + px
 
 	# now the discriminator loss
 	_zs = cat(zs...,dims=1)
@@ -57,15 +67,17 @@ end
 function factor_closs(m, x::AbstractArray{T,4}) where T
 	zs = encode_all(m, x)
 	zps = map(zs) do z
-		pm = permute_mat(z)
-		z*pm
+		#pm = permute_mat(z)
+		#z*pm
+		zp = permute_mat(z)
+		zp
 	end
 	_zs = cat(zs..., dims=1)
 	_zps = cat(zps..., dims=1)
 	dloss(m.c, _zs, _zps)
 end
 
-function permute_mat(x::AbstractArray{T,2}) where T
+function permutation_mat(x::AbstractArray{T,2}) where T
 	m,n = size(x)
 	perm_mat = fill!(similar(x, n, n), 0)
 	for (j,i) in zip(1:n, sample(1:n, n, replace=false))
@@ -73,24 +85,25 @@ function permute_mat(x::AbstractArray{T,2}) where T
 	end
 	perm_mat
 end
-Flux.Zygote.@nograd permute_mat
+permute_mat(x::AbstractArray{T,2}) where T = x*permutation_mat(x)
+Flux.Zygote.@nograd permute_mat, permutation_mat
 
 """
 	train_fvlae(zdim, hdim, batchsize, ks, ncs, stride, nepochs, data, val_x, tst_x; 
 	λ=0.0f0, γ=1.0f0, epochsize = size(data,4), layer_depth=1, lr=0.001f0, var=:dense, 
-	activation=activation, discriminator_nlayers=3)
+	activation=activation, discriminator_nlayers=3, xdist=:gaussian)
 
 Train a factored VLAE.
 """
 function train_fvlae(zdim, hdim, batchsize, ks, ncs, str, nepochs, data, val_x, tst_x; 
 	λ=0.0f0, γ=1.0f0, epochsize = size(data,4), layer_depth=1, lr=0.001f0, var=:dense, 
-	activation=activation, discriminator_nlayers=3)
+	activation=activation, discriminator_nlayers=3, xdist=:gaussian)
 
 	gval_x = gpu(val_x[:,:,:,1:min(1000, size(val_x,4))]);
 	gtst_x = gpu(tst_x);
 	
 	model = gpu(FVLAE(zdim, hdim, ks, ncs, str, size(data), layer_depth=layer_depth, var=var, 
-		activation=activation, nlayers=discriminator_nlayers))
+		activation=activation, nlayers=discriminator_nlayers, xdist=xdist))
 	nl = length(model.e)
 	
 	aeps = Flux.params(model.e, model.d)

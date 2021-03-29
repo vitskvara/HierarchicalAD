@@ -7,6 +7,7 @@ kld(μ::AbstractArray{T,N}, σ2::AbstractArray{T,N}) where T where N =
 kld(μ::AbstractArray{T,N}, σ2::T) where T where N = 
     T(1/2)*sum(σ2 .+ μ.^2 .- log(σ2) .- T(1.0), dims = 1)
 
+# gaussians
 logpdf(x::AbstractArray{T,N}, μ::AbstractArray{T,N}, σ2::AbstractArray{T,N}) where T where N = 
     - vec(sum(((x - μ).^2) ./ σ2 .+ log.(σ2), dims=1)) .+ size(x,1)*log(T(2π)) / T(2)
 logpdf(x::AbstractArray{T,N}, μ::AbstractArray{T,N}, σ2::T) where T where N = 
@@ -32,6 +33,12 @@ function mu_var1(x::AbstractArray{T,4}) where T
     return μ, σ
 end
 
+# logit prob.
+bernoulli_prob(xh::AbstractArray{T,4}, x::AbstractArray{T,4}) where T = 
+    map(i->Flux.binarycrossentropy(xh[:,:,:,i], x[:,:,:,i]), 1:size(x,4))
+bernoulli_prob(xh::AbstractArray{T,2}, x::AbstractArray{T,2}) where T = 
+    map(i->Flux.binarycrossentropy(xh[:,i], x[:,i]), 1:size(x,2))
+
 l2(x) = sum(x.^2)
 
 function param_update!(loss, ps, x, opt)
@@ -43,7 +50,7 @@ end
 
 # constructors
 function basic_model_constructor(zdim::Int, ks, ncs, strd, datasize; layer_depth=1, 
-    var=:dense, activation="relu", kwargs...)
+    var=:dense, activation="relu", xdist=:gaussian, kwargs...)
     nl = length(ncs) # no layers
     # this captures the dimensions after each convolution
     sout = Tuple(map(j -> datasize[1:2] .- [sum(map(k->k[i]-1, ks[1:j])) for i in 1:2], 1:length(ncs))) 
@@ -66,7 +73,11 @@ function basic_model_constructor(zdim::Int, ks, ncs, strd, datasize; layer_depth
 
     # encoder/decoder
     e = Tuple([Conv(ks[i], ncs_in_e[i]=>ncs[i], af, stride=strd) for i in 1:nl])
-    if var == :dense
+    if xdist == :bernoulli
+        d = Tuple([[ConvTranspose(rks[i], ncs_in_d[i]=>ncs_out_d[i], af, stride=strd) for i in 1:nl-1]...,
+                    ConvTranspose(rks[end], ncs_in_d[end]=>ncs_out_d[end], σ, stride=strd)]
+                )
+    elseif var == :dense
         d = Tuple([[ConvTranspose(rks[i], ncs_in_d[i]=>ncs_out_d[i], af, stride=strd) for i in 1:nl-1]...,
                 Chain(
                     ConvTranspose(rks[end], ncs_in_d[end]=>ncs_out_d[end], af, stride=strd),
