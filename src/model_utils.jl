@@ -52,17 +52,10 @@ end
 function basic_model_constructor(zdim::Int, ks, ncs, strd, datasize; layer_depth=1, 
     var=:dense, activation="relu", xdist=:gaussian, kwargs...)
     nl = length(ncs) # no layers
-    # this captures the dimensions after each convolution
-    sout = Tuple(map(j -> datasize[1:2] .- [sum(map(k->k[i]-1, ks[1:j])) for i in 1:2], 1:length(ncs))) 
-    # this is the vec. dimension after each convolution
-    ddim = map(i->floor(Int,prod(sout[i])*ncs[i]/2), 1:length(ncs))
-    ddim_d = copy(ddim)
-    ddim_d[end] = ddim_d[end]*2
-    indim = prod(datasize[1:3])
-    rks = reverse(ks)
-    rsout = reverse(sout)
 
     # number of channels for encoder/decoder
+    indim = prod(datasize[1:3])
+    rks = reverse(ks)
     ncs_in_e = vcat([datasize[3]], [floor(Int,n/2) for n in ncs[1:end-1]])
     ncs_in_d = reverse(ncs)
     ncs_out_d = vcat([floor(Int,n/2) for n in ncs_in_d[2:end]], [datasize[3]])
@@ -94,6 +87,23 @@ function basic_model_constructor(zdim::Int, ks, ncs, strd, datasize; layer_depth
         error("Decoder var=$var not implemented! Try one of `[:dense, :conv]`.")
     end    
     
+    # now capture the dimensions after each convolution
+    outs = datasize
+    _sout = []
+    for (l,nc) in zip(e,ncs_in_e)
+        cindim = (outs[1:2]..., nc, outs[end])
+        outs = outdims(l, cindim)
+        push!(_sout, [outs[1:2]...])
+    end
+#    _sout = Tuple(_sout)
+    sout = (_sout...,) # this need to be here for gpu compatibility 
+
+    # this is the vec. dimension after each convolution
+    ddim = map(i->floor(Int,prod(sout[i])*ncs[i]/2), 1:length(ncs))
+    ddim_d = copy(ddim)
+    ddim_d[end] = ddim_d[end]*2
+    rsout = reverse(sout)
+
     # latent extractor
     g = Tuple([Chain(x->reshape(x, :, size(x,4)), Dense(ddim[i], zdim*2)) for i in 1:nl])
     
