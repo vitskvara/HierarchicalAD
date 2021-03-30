@@ -1,21 +1,15 @@
 abstract type AbstractVLAE end
 
-# improved elbo
 function elbo(m::AbstractVLAE, x::AbstractArray{T,4}) where T
-    # encoder pass
+    # encoder pass - KL divergence
     μzs_σzs = _encoded_mu_vars(m, x)
     zs = map(y->rptrick(y...), μzs_σzs)
     kldl = sum(map(y->Flux.mean(kld(y...)), μzs_σzs))
         
-    # decoder pass
-    if m.xdist == :gaussian
-        μx, σx = _decoded_mu_var(m, zs...)
-        _x = (m.var == :dense) ? vectorize(x) : x        
-        return -kldl + Flux.mean(logpdf(_x, μx, σx))
-    else # bernoulli
-        _x = _decoder_out(m, zs...)
-        return -kldl - Flux.mean(bernoulli_prob(_x, x))
-    end
+    # decoder pass - logpdf
+    lpdf = Flux.mean(logpdf(m, x, zs...))
+
+    -kldl + lpdf
 end
 
 function _encoded_mu_vars(m::AbstractVLAE, x)
@@ -62,7 +56,7 @@ function encode_all(m::AbstractVLAE, x, batchsize::Int)
 end
 
 function decode(m::AbstractVLAE, zs...)
-    if m.xdist == :gaussian 
+    if m.xdist == Val(:gaussian)
         μx, σx = _decoded_mu_var(m, zs...)
         return devectorize(rptrick(μx, σx), m.xdim...)
     else # bernoulli
@@ -75,14 +69,7 @@ reconstruct(m::AbstractVLAE, x) = decode(m, encode_all(m, x)...)
 function reconstruction_probability(m::AbstractVLAE, x)  
     x = gpu(x)
     zs = map(y->rptrick(y...), _encoded_mu_vars(m, x))
-    if m.xdist == :gaussian
-        μx, σx = _decoded_mu_var(m, zs...)
-        _x = (m.var == :dense) ? vectorize(x) : x
-        return -logpdf(_x, μx, σx)
-    else # bernoulli
-        xh = _decoder_out(m, zs...)
-        return bernoulli_prob(xh, x)
-    end
+    return -logpdf(m, x, zs...)
 end
 reconstruction_probability(m::AbstractVLAE, x, L::Int) = mean([reconstruction_probability(m,x) for _ in 1:L])
 function reconstruction_probability(m::AbstractVLAE, x, L::Int, batchsize::Int)

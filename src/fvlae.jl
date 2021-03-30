@@ -1,15 +1,16 @@
-struct FVLAE <: AbstractVLAE
-    e
-    d
-    c # critic
-    g # extracts latent variables
-    f # concatenates latent vars with the rest
-    xdim # (h,w,c)
-    zdim # scalar
-    var # dense or conv last layer
-    xdist
+struct FVLAE{E,D,C,G,F,XD,ZD,V,XDIST<:Val} <: AbstractVLAE
+    e::E
+    d::D
+    c::C # critic
+    g::G # extracts latent variables
+    f::F # concatenates latent vars with the rest
+    xdim::XD # (h,w,c)
+    zdim::ZD # scalar
+    var::V # dense or conv last layer
+    xdist::XDIST # gaussian or bernoulli
 end
-
+FVLAE(e,d,c,g,f,xdim,zdim,var,xdist::Symbol=:gaussian) = 
+	FVLAE(e,d,c,g,f,xdim,zdim,var,Val(xdist))
 Flux.@functor FVLAE
 (m::FVLAE)(x) = reconstruct(m, x)
 
@@ -33,6 +34,16 @@ function FVLAE(zdim::Int, hdim::Int, ks, ncs, str, datasize; discriminator_nlaye
     return FVLAE(e,d,c,g,f,datasize[1:3],zdim,var,xdist)
 end
 
+function logpdf(m::FVLAE{E,D,C,G,F,X,Z,V,XD}, x, zs...) where {E,D,C,G,F,X,Z,V,XD<:Val{:gaussian}}
+    μx, σx = _decoded_mu_var(m, zs...)
+    _x = (m.var == :dense) ? vectorize(x) : x      
+    return  gauss_logpdf(_x, μx, σx)
+end
+function logpdf(m::FVLAE{E,D,C,G,F,X,Z,V,XD}, x, zs...) where {E,D,C,G,F,X,Z,V,XD<:Val{:bernoulli}}
+    _x = _decoder_out(m, zs...)
+    return  bernoulli_logpdf(_x, x)
+end
+
 dloss(d,z::AbstractArray{T,2},zp::AbstractArray{T,2}) where T  = 
 	-0.5f0*Flux.mean(log.(d(z) .+ eps(Float32)) .+ log.(1 .- d(zp) .+ eps(Float32)))
 function total_correlation(d,z::AbstractArray{T,2}) where T 
@@ -41,21 +52,14 @@ function total_correlation(d,z::AbstractArray{T,2}) where T
 end
 
 function factor_aeloss(m, x::AbstractArray{T,4}, γ::Float32) where T
-	# encoder pass
+	# encoder pass - KL divergence
 	μzs_σzs = _encoded_mu_vars(m, x)
 	zs = map(y->rptrick(y...), μzs_σzs)
 	kldl = sum(map(y->Flux.mean(kld(y...)), μzs_σzs))
 		
-	# decoder pass
-	if m.xdist == :gaussian
-		μx, σx = _decoded_mu_var(m, zs...)
-		_x = (m.var == :dense) ? vectorize(x) : x
-		px = Flux.mean(logpdf(_x, μx, σx))
-	else # bernoulli
-		_x = _decoder_out(m, zs...)
-		px = -Flux.mean(bernoulli_prob(_x, x))
-	end
-	elbo = -kldl + px
+	# decoder pass - logpdf
+	lpdf = Flux.mean(logpdf(m, x, zs...))
+	elbo = -kldl + lpdf
 
 	# now the discriminator loss
 	_zs = cat(zs...,dims=1)

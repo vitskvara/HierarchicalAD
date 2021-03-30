@@ -8,11 +8,11 @@ kld(μ::AbstractArray{T,N}, σ2::T) where T where N =
     T(1/2)*sum(σ2 .+ μ.^2 .- log(σ2) .- T(1.0), dims = 1)
 
 # gaussians
-logpdf(x::AbstractArray{T,N}, μ::AbstractArray{T,N}, σ2::AbstractArray{T,N}) where T where N = 
+gauss_logpdf(x::AbstractArray{T,N}, μ::AbstractArray{T,N}, σ2::AbstractArray{T,N}) where T where N = 
     - vec(sum(((x - μ).^2) ./ σ2 .+ log.(σ2), dims=1)) .+ size(x,1)*log(T(2π)) / T(2)
-logpdf(x::AbstractArray{T,N}, μ::AbstractArray{T,N}, σ2::T) where T where N = 
+gauss_logpdf(x::AbstractArray{T,N}, μ::AbstractArray{T,N}, σ2::T) where T where N = 
     - vec(sum(((x - μ).^2) ./ σ2 .+ log(σ2), dims=1)) .+ size(x,1)*log(T(2π)) / T(2)
-logpdf(x::AbstractArray{T,4}, μ::AbstractArray{T,4}, σ2::AbstractArray{T,4}) where T = 
+gauss_logpdf(x::AbstractArray{T,4}, μ::AbstractArray{T,4}, σ2::AbstractArray{T,4}) where T = 
     - vec(sum((x - μ).^2 ./ σ2 .+ log.(σ2), dims = (1,2,3))) .+ prod(size(x)[1:3])*log(T(2π)) / T(2)
 
 function mu_var(x)
@@ -34,10 +34,10 @@ function mu_var1(x::AbstractArray{T,4}) where T
 end
 
 # logit prob.
-bernoulli_prob(xh::AbstractArray{T,4}, x::AbstractArray{T,4}) where T = 
-    map(i->Flux.binarycrossentropy(xh[:,:,:,i], x[:,:,:,i]), 1:size(x,4))
-bernoulli_prob(xh::AbstractArray{T,2}, x::AbstractArray{T,2}) where T = 
-    map(i->Flux.binarycrossentropy(xh[:,i], x[:,i]), 1:size(x,2))
+bernoulli_logpdf(xh::AbstractArray{T,4}, x::AbstractArray{T,4}) where T = 
+    -Flux.binarycrossentropy(xh, x, agg=x->vec(sum(x, dims=(1,2,3))))
+bernoulli_logpdf(xh::AbstractArray{T,2}, x::AbstractArray{T,2}) where T = 
+    -Flux.binarycrossentropy(xh, x, agg=x->vec(sum(x, dims=(1))))
 
 l2(x) = sum(x.^2)
 

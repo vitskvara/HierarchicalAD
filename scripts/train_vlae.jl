@@ -52,6 +52,10 @@ s = ArgParseSettings()
         default = "relu"
         arg_type = String
         help = "activation function"
+    "--xdist"
+        default = :gaussian
+        arg_type = Symbol
+        help = "decoder distribution, one of gaussian/bernoulli"
     "--last_conv"
         action = :store_true
         help = "should the last layer of decoder be a dense or a conv layer"
@@ -104,7 +108,7 @@ s = ArgParseSettings()
 end
 args = parse_args(s)
 @unpack latent_dim, channels, kernelsizes, stride, layer_depth, last_conv, seed, lambda, batchsize, nepochs, 
-    gpu_id, epochsize, savepath, lr, activation = args
+    gpu_id, epochsize, savepath, lr, activation, xdist = args
 latent_count = length(channels)
 (latent_count <= length(kernelsizes)) ? nothing : error("number of kernels and channels does not match.")
 out_var = last_conv ? :conv : :dense
@@ -116,7 +120,7 @@ CUDA.device!(gpu_id)
 # get filters
 filter_keys = filter(k->!(k in 
     ["latent_dim", "channels", "kernelsizes", "stride", "layer_depth", "last_conv", "seed", "lambda", 
-    "batchsize", "nepochs", "gpu_id", "epochsize", "savepath", "lr", "activation"]),keys(args))
+    "batchsize", "nepochs", "gpu_id", "epochsize", "savepath", "lr", "activation", "xdist"]),keys(args))
 filter_dict = Dict(zip(filter_keys, [args[k] for k in filter_keys]))
 
 # also, set which arguments are non-default
@@ -140,7 +144,8 @@ ncs = channels
 ks = [(k,k) for k in kernelsizes][1:latent_count]
 model, training_history, reconstructions, latent_representations = 
     HierarchicalAD.train_vlae(latent_dim, batchsize, ks, ncs, stride, nepochs, tr_x, val_x, tst_x; 
-        λ=lambda, epochsize=epochsize, layer_depth=layer_depth, lr=lr, var=out_var, activation=activation)
+        λ=lambda, epochsize=epochsize, layer_depth=layer_depth, lr=lr, var=out_var, 
+        activation=activation, xdist=xdist)
 
 # compute scores
 tr_scores, val_scores, tst_scores, a_scores = 
@@ -155,9 +160,9 @@ model_id = HierarchicalAD.timetag()
 experiment_args = (model_id=model_id, data=dataset, latent_count=latent_count, latent_dim=latent_dim, 
     channels=ncs, kernelsizes=ks, stride=stride, layer_depth=layer_depth, last_conv=last_conv, lr=lr, 
     activation=activation, seed=seed, lambda=lambda, batchsize=batchsize, nepochs=nepochs, gpu_id=gpu_id, 
-    epochsize=epochsize)
+    epochsize=epochsize, xdist=xdist)
 save_args = (model_id=model_id, data=dataset, model="vlae", latent_dim=latent_dim,
-    channels=channels,gamma=gamma, lambda=lambda, activation=activation)
+    channels=channels, lambda=lambda, activation=activation, xdist=xdist)
 svn = HierarchicalAD.safe_savename(save_args, "bson", digits=5)
 svn = joinpath(datadir("models/$savepath"), svn)
 tagsave(svn, Dict(
