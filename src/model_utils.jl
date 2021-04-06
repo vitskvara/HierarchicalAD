@@ -59,34 +59,19 @@ function basic_model_constructor(zdim::Int, ks, ncs, strd, datasize; layer_depth
     ncs_in_e = vcat([datasize[3]], [floor(Int,n/2) for n in ncs[1:end-1]])
     ncs_in_d = reverse(ncs)
     ncs_out_d = vcat([floor(Int,n/2) for n in ncs_in_d[2:end]], [datasize[3]])
-    ncs_out_f = vcat([floor(Int,n/2) for n in ncs[1:end-1]], [ncs[end]])
+    ncs_out_f = vcat([ncs[end]], ncs_out_d[1:end-1])
     
     # activation function
     af = (typeof(activation) <: Function) ? activation : eval(Meta.parse(activation))
 
     # encoder/decoder
-    e = Tuple([Conv(ks[i], ncs_in_e[i]=>ncs[i], af, stride=strd) for i in 1:nl])
-    if xdist == :bernoulli
-        d = Tuple([[ConvTranspose(rks[i], ncs_in_d[i]=>ncs_out_d[i], af, stride=strd) for i in 1:nl-1]...,
-                    ConvTranspose(rks[end], ncs_in_d[end]=>ncs_out_d[end], σ, stride=strd)]
-                )
-    elseif var == :dense
-        d = Tuple([[ConvTranspose(rks[i], ncs_in_d[i]=>ncs_out_d[i], af, stride=strd) for i in 1:nl-1]...,
-                Chain(
-                    ConvTranspose(rks[end], ncs_in_d[end]=>ncs_out_d[end], af, stride=strd),
-                    x->reshape(x, :, size(x,4)),
-                    Dense(indim, indim+1)
-                )]
-            )
-    elseif var == :conv
-        ncs_out_d[end] += 1
-        d = Tuple([[ConvTranspose(rks[i], ncs_in_d[i]=>ncs_out_d[i], af, stride=strd) for i in 1:nl-1]...,
-                    ConvTranspose(rks[end], ncs_in_d[end]=>ncs_out_d[end], stride=strd)]
-                )
+    if strd in [1,2]
+        e, d = ae_constructor(indim, strd, ks, rks, ncs_in_e, ncs, ncs_in_d, 
+                ncs_out_d, af, nl, xdist, var, datasize) 
     else
-        error("Decoder var=$var not implemented! Try one of `[:dense, :conv]`.")
-    end    
-    
+        error("Requestes stride length $strd not implemented.") 
+    end
+
     # now capture the dimensions after each convolution
     outs = datasize
     _sout = []
@@ -95,23 +80,69 @@ function basic_model_constructor(zdim::Int, ks, ncs, strd, datasize; layer_depth
         outs = outdims(l, cindim)
         push!(_sout, [outs[1:2]...])
     end
-#    _sout = Tuple(_sout)
-    sout = (_sout...,) # this need to be here for gpu compatibility 
+    sout_e = (_sout...,) # this needs to be here for gpu compatibility 
+
+    # now capture the dimensions after each decoder step
+    outs = (sout_e[end]..., datasize[3:4]...)
+    _sout = [sout_e[end]]
+    for (l,nc) in zip(d[1:end],ncs_in_d[1:end-1])
+        cindim = (outs[1:2]..., nc, outs[end])
+        outs = outdims(l, cindim)
+        push!(_sout, [outs[1:2]...])
+    end
+    sout_d = (_sout...,) # this needs to be here for gpu compatibility 
 
     # this is the vec. dimension after each convolution
-    ddim = map(i->floor(Int,prod(sout[i])*ncs[i]/2), 1:length(ncs))
-    ddim_d = copy(ddim)
-    ddim_d[end] = ddim_d[end]*2
-    rsout = reverse(sout)
-
+    ddim_e = map(i->floor(Int,prod(sout_e[i])*ncs[i]/2), 1:length(ncs))
+    ddim_d = map(i->floor(Int,prod(sout_d[i])*ncs_out_f[i]), 1:length(ncs))
+    
     # latent extractor
-    g = Tuple([Chain(x->reshape(x, :, size(x,4)), Dense(ddim[i], zdim*2)) for i in 1:nl])
+    g = Tuple([Chain(x->reshape(x, :, size(x,4)), Dense(ddim_e[i], zdim*2)) for i in 1:nl])
     
     # latent reshaper
     f = Tuple([Chain(Dense(zdim, ddim_d[i], af), 
-            x->reshape(x, sout[i]..., ncs_out_f[i], size(x,2))) for i in nl:-1:1])
+            x->reshape(x, sout_d[i]..., ncs_out_f[i], size(x,2))) for i in 1:nl])
 
     return e, d, g, f
+end
+
+function ae_constructor(indim, strd, ks, rks, ncs_in_e, ncs_out_e, ncs_in_d, ncs_out_d, af, 
+    nl, xdist, var, datasize)
+
+    # encoder/decoder
+    e = Tuple([Conv(ks[i], ncs_in_e[i]=>ncs_out_e[i], af, stride=strd) for i in 1:nl])
+    if xdist == :bernoulli
+        d = Tuple([[ConvTranspose(rks[i], ncs_in_d[i]=>ncs_out_d[i], af, stride=strd, 
+                        pad=1-strd) for i in 1:nl-1]...,
+                    Chain(
+                        ConvTranspose(rks[end], ncs_in_d[end]=>ncs_out_d[end], σ, stride=strd,
+                            pad=1-strd),
+                        AdaptiveMeanPool((datasize[1:2]...,)))]
+                )
+    elseif var == :dense
+        d = Tuple([[ConvTranspose(rks[i], ncs_in_d[i]=>ncs_out_d[i], af, stride=strd,
+                        pad=1-strd) for i in 1:nl-1]...,
+                Chain(
+                    ConvTranspose(rks[end], ncs_in_d[end]=>ncs_out_d[end], af, stride=strd,
+                        pad=1-strd),
+                    AdaptiveMeanPool((datasize[1:2]...,)),
+                    x->reshape(x, :, size(x,4)),
+                    Dense(indim, indim+1)
+                )])
+    elseif var == :conv
+        ncs_out_d[end] += 1
+        d = Tuple([[ConvTranspose(rks[i], ncs_in_d[i]=>ncs_out_d[i], af, stride=strd,
+                        pad=1-strd) for i in 1:nl-1]...,
+                    Chain(
+                        ConvTranspose(rks[end], ncs_in_d[end]=>ncs_out_d[end], stride=strd,
+                            pad=1-strd),
+                        AdaptiveMeanPool((datasize[1:2]...,)))
+                    ])
+    else
+        error("Decoder var=$var not implemented! Try one of `[:dense, :conv]`.")
+    end    
+
+    return e, d
 end
 
 function discriminator_constructor(zdim::Int, hdim::Int, nlayers::Int; activation="relu", kwargs...)

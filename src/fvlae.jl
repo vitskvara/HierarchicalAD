@@ -20,13 +20,13 @@ Flux.@functor FVLAE
 
 Factor VLAE constructor.
 """
-function FVLAE(zdim::Int, hdim::Int, ks, ncs, str, datasize; discriminator_nlayers::Int=3,
+function FVLAE(zdim::Int, hdim::Int, ks, ncs, strd, datasize; discriminator_nlayers::Int=3,
 		var=:dense, xdist=:gaussian, kwargs...)
 	(xdist in [:gaussian, :bernoulli]) ? nothing : 
 		error("xdist must be either :gaussian or :bernoulli")
 
 	# get encoder, decoder and latent extractors and reshapers
-	e,d,g,f = basic_model_constructor(zdim, ks, ncs, str, datasize; var=var, xdist=xdist, kwargs...)
+	e,d,g,f = basic_model_constructor(zdim, ks, ncs, strd, datasize; var=var, xdist=xdist, kwargs...)
 
 	# now construct the critic (discriminator)
 	c = discriminator_constructor(zdim*length(ks), hdim, discriminator_nlayers; kwargs...)

@@ -52,6 +52,9 @@ s = ArgParseSettings()
         default = 0f0
         arg_type = Float32
         help = "L2 regularization constant"
+    "--test"
+        action = :store_true
+        help = "test run with limited data"
     "--batchsize"
         default = 128
         arg_type = Int
@@ -115,7 +118,7 @@ s = ArgParseSettings()
         default = [">=", "0"]
 end
 args = parse_args(s)
-@unpack latent_dim, hdim, channels, kernelsizes, stride, layer_depth, last_conv, seed, 
+@unpack latent_dim, hdim, channels, kernelsizes, stride, layer_depth, last_conv, seed, test,
     lambda, batchsize, nepochs, gpu_id, epochsize, savepath, lr, activation, gamma, xdist = args
 latent_count = length(channels)
 (latent_count <= length(kernelsizes)) ? nothing : error("number of kernels and channels does not match.")
@@ -129,7 +132,7 @@ CUDA.device!(gpu_id)
 filter_keys = filter(k->!(k in 
     ["latent_dim", "hdim", "channels", "kernelsizes", "stride", "layer_depth", "last_conv", 
     "seed", "lambda", "batchsize", "nepochs", "gpu_id", "epochsize", "savepath", "lr", 
-    "activation", "gamma", "xdist"]),keys(args))
+    "activation", "gamma", "xdist", "test"]),keys(args))
 filter_dict = Dict(zip(filter_keys, [args[k] for k in filter_keys]))
 
 # also, set which arguments are non-default
@@ -142,8 +145,17 @@ end
 # get the data
 dataset = "morpho_mnist"
 ratios = (0.8,0.199,0.001)
-(tr_x, tr_y), (val_x, val_y), (tst_x, tst_y), (a_x, a_y) = 
-    HierarchicalAD.load_train_val_test_data(dataset, filter_dict; ratios=ratios, seed=seed)
+if test 
+    data = HierarchicalAD.load_mnist("train")
+    tr_x = HierarchicalAD.sample_tensor(data, 1000)
+    val_x = HierarchicalAD.sample_tensor(data, 1000)
+    tst_x = HierarchicalAD.sample_tensor(data, 100)
+    tr_y, val_y, tst_y = nothing, nothing, nothing
+    a_x, a_y = HierarchicalAD.sample_tensor(HierarchicalAD.load_mnist("test"), 1000), nothing
+else
+    (tr_x, tr_y), (val_x, val_y), (tst_x, tst_y), (a_x, a_y) = 
+        HierarchicalAD.load_train_val_test_data(dataset, filter_dict; ratios=ratios, seed=seed)
+end
 if epochsize == nothing
     epochsize = size(tr_x, 4)
 end
@@ -172,7 +184,7 @@ Flux.Zygote.ignore() do
         latent_dim=latent_dim, channels=ncs, kernelsizes=ks, stride=stride, layer_depth=layer_depth, 
         last_conv=last_conv, lr=lr, activation=activation, seed=seed, lambda=lambda, 
         batchsize=batchsize, nepochs=nepochs, gpu_id=gpu_id, epochsize=epochsize, gamma=gamma, 
-        hdim=hdim, xdist=xdist)
+        hdim=hdim, xdist=xdist, test=test)
     save_args = (model_id=model_id, data=dataset, model="fvlae", latent_dim=latent_dim,
         channels=channels,gamma=gamma, lambda=lambda, activation=activation, xdist=xdist)
     svn = HierarchicalAD.safe_savename(save_args, "bson", digits=5)

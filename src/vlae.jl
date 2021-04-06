@@ -24,7 +24,7 @@ function VLAE(zdim::Int, ks, ncs, strd, datasize; var=:dense, xdist=:gaussian, k
         error("xdist must be either :gaussian or :bernoulli")
 
 	# get encoder, decoder and latent extractors and reshapers
-	e,d,g,f = basic_model_constructor(zdim, ks, ncs, strd, datasize; var=var, xdist=xdist, kwargs...)
+   	e,d,g,f = basic_model_constructor(zdim, ks, ncs, strd, datasize; var=var, xdist=xdist, kwargs...)
 
     return VLAE(e,d,g,f,datasize[1:3],zdim,var,xdist)
 end
