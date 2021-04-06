@@ -69,7 +69,7 @@ function basic_model_constructor(zdim::Int, ks, ncs, strd, datasize; layer_depth
         e, d = ae_constructor(indim, strd, ks, rks, ncs_in_e, ncs, ncs_in_d, 
                 ncs_out_d, af, nl, xdist, var, datasize) 
     else
-        error("Requestes stride length $strd not implemented.") 
+        error("Requested stride length $strd not implemented.") 
     end
 
     # now capture the dimensions after each convolution
@@ -83,9 +83,10 @@ function basic_model_constructor(zdim::Int, ks, ncs, strd, datasize; layer_depth
     sout_e = (_sout...,) # this needs to be here for gpu compatibility 
 
     # now capture the dimensions after each decoder step
-    outs = (sout_e[end]..., datasize[3:4]...)
-    _sout = [sout_e[end]]
-    for (l,nc) in zip(d[1:end],ncs_in_d[1:end-1])
+     sc=2^(strd-1) # this has to be here for proper size scaling
+    outs = (sout_e[end].*sc..., datasize[3:4]...)
+    _sout = [[outs[1], outs[2]]]
+   for (l,nc) in zip(d[1:end],ncs_in_d[1:end-1])
         cindim = (outs[1:2]..., nc, outs[end])
         outs = outdims(l, cindim)
         push!(_sout, [outs[1:2]...])
@@ -110,21 +111,22 @@ function ae_constructor(indim, strd, ks, rks, ncs_in_e, ncs_out_e, ncs_in_d, ncs
     nl, xdist, var, datasize)
 
     # encoder/decoder
+    # negative striding does not work on GPU
     e = Tuple([Conv(ks[i], ncs_in_e[i]=>ncs_out_e[i], af, stride=strd) for i in 1:nl])
     if xdist == :bernoulli
         d = Tuple([[ConvTranspose(rks[i], ncs_in_d[i]=>ncs_out_d[i], af, stride=strd, 
-                        pad=1-strd) for i in 1:nl-1]...,
+                        pad=0) for i in 1:nl-1]...,
                     Chain(
                         ConvTranspose(rks[end], ncs_in_d[end]=>ncs_out_d[end], σ, stride=strd,
-                            pad=1-strd),
+                            pad=0),
                         AdaptiveMeanPool((datasize[1:2]...,)))]
                 )
     elseif var == :dense
         d = Tuple([[ConvTranspose(rks[i], ncs_in_d[i]=>ncs_out_d[i], af, stride=strd,
-                        pad=1-strd) for i in 1:nl-1]...,
+                        pad=0) for i in 1:nl-1]..., 
                 Chain(
                     ConvTranspose(rks[end], ncs_in_d[end]=>ncs_out_d[end], af, stride=strd,
-                        pad=1-strd),
+                        pad=0),
                     AdaptiveMeanPool((datasize[1:2]...,)),
                     x->reshape(x, :, size(x,4)),
                     Dense(indim, indim+1)
@@ -132,10 +134,10 @@ function ae_constructor(indim, strd, ks, rks, ncs_in_e, ncs_out_e, ncs_in_d, ncs
     elseif var == :conv
         ncs_out_d[end] += 1
         d = Tuple([[ConvTranspose(rks[i], ncs_in_d[i]=>ncs_out_d[i], af, stride=strd,
-                        pad=1-strd) for i in 1:nl-1]...,
+                        pad=0) for i in 1:nl-1]...,
                     Chain(
                         ConvTranspose(rks[end], ncs_in_d[end]=>ncs_out_d[end], stride=strd,
-                            pad=1-strd),
+                            pad=0),
                         AdaptiveMeanPool((datasize[1:2]...,)))
                     ])
     else
