@@ -7,11 +7,12 @@ morpho_mnist_labels() = CSV.read(datadir("morpho_mnist/labels.csv"), DataFrame)
 
 Filter the data given the full labels and a dict of filters.
 """
-function filter_data(full_labels, filter_dict)
+function filter_data(full_labels, filter_dict; categorical_key=nothing)
     ks = keys(filter_dict)
-    bin_inds = ("digit" in ks) ? map(x-> x in filter_dict["digit"], full_labels[!,:digit]) : 
+    bin_inds = !isnothing(categorical_key)  ? 
+        map(x-> x in filter_dict[categorical_key], full_labels[!,Symbol(categorical_key)]) : 
         Bool.(ones(size(full_labels,1)))
-    for k in filter(k->k != "digit", ks)
+    for k in filter(k->k != categorical_key, ks)
         kp = filter_dict[k]
         ff(x) = eval(Meta.parse("$x $(kp[1]) $(kp[2])"))
         bin_inds = bin_inds .& map(ff, full_labels[!,Symbol(k)])
@@ -87,13 +88,17 @@ function train_val_test_inds(indices, ratios=(0.6,0.2,0.2); seed=nothing)
 end
 
 """
-	load_train_val_test_data(dataset, filter_dict=Dict(); ratios=(0.6,0.2,0.2), seed=nothing)
+	load_train_val_test_data(dataset, filter_dict=Dict(); ratios=(0.6,0.2,0.2), seed=nothing,
+        categorical_key=nothing)
 
 Dataset is one of "morhpo_mnist"/"digits_bw"/"digits_rgb".
 """
-function load_train_val_test_data(dataset, filter_dict=Dict(); ratios=(0.6,0.2,0.2), seed=nothing)
+function load_train_val_test_data(dataset, filter_dict=Dict(); ratios=(0.6,0.2,0.2), 
+    seed=nothing, categorical_key=nothing)
     if dataset == "morpho_mnist"
 	    full_data = load_mnist()
+    elseif dataset == "shapes2D"
+        full_data,_ = load_shapes2D()
 	else
 		raw_data = load(datadir("$(dataset)/digits.bson"))[:digits]
 		N = length(raw_data)
@@ -103,7 +108,7 @@ function load_train_val_test_data(dataset, filter_dict=Dict(); ratios=(0.6,0.2,0
 		end
 	end
     full_labels = CSV.read(datadir("$(dataset)/labels.csv"), DataFrame)
-    included_inds = filter_data(full_labels, filter_dict)
+    included_inds = filter_data(full_labels, filter_dict; categorical_key=categorical_key)
 
     # now split the data
     normal_data = full_data[:,:,:,included_inds]

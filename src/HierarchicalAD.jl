@@ -16,6 +16,8 @@ using MLDatasets
 using Random
 using Dates
 using ValueHistories
+using DataDeps
+using PyCall
 
 include("digits.jl")
 include("abstract_vlae.jl")
@@ -24,6 +26,7 @@ include("fvlae.jl")
 include("model_utils.jl")
 include("training_utils.jl")
 include("experiments.jl")
+include("data.jl")
 
 export VLAE, FVLAE, AbstractVLAE
 

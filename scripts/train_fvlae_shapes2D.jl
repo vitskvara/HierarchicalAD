@@ -81,38 +81,33 @@ s = ArgParseSettings()
     "--epochsize"
         help = "number of samples used in each epoch"
         default = nothing
-    "--digit"
-        help = "which digits to include"
+    "--shape"
+        help = "there are 3 shapes"
         arg_type = Int
         nargs = '*'
-        default = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
-    "--area"
-        help = "define the included area which is a number in [0,350] with mean of ~100, e.g. `--area >= 150`"
+        default = [1, 2, 3]
+    "--scale"
+        help = "scale is in the range [0.5, 1.0]"
+        arg_type = String
+        nargs = 2
+        default = [">=", "0.5"]
+   "--orientation"
+        help = "an angle in the range [0, 360]"
         arg_type = String
         nargs = 2
         default = [">=", "0"]
-   "--length"
-        help = "define the included digit length which is a number in [0,100] with mean of ~40"
+   "--normalized_orientation"
+        help = "an angle in the range [0, 1]"
         arg_type = String
         nargs = 2
         default = [">=", "0"]
-   "--thickness"
-        help = "define the included thickness which is a number in [0,10] with mean of ~3"
+   "--posX"
+        help = "x position in the range [0,1]"
         arg_type = String
         nargs = 2
         default = [">=", "0"]
-   "--slant"
-        help = "define the included slant which is a number in [-1,1] with mean of ~0.1"
-        arg_type = String
-        nargs = 2
-        default = [">=", "-1"]
-   "--width"
-        help = "define the included width which is a number in [0,25] with mean of ~14"
-        arg_type = String
-        nargs = 2
-        default = [">=", "0"]
-   "--height"
-        help = "define the included height which is a number in [0,21] with mean of ~19.5"
+   "--posY"
+        help = "y position in the range [0,1]"
         arg_type = String
         nargs = 2
         default = [">=", "0"]
@@ -143,19 +138,19 @@ for k in filter_keys
 end
 
 # get the data
-dataset = "morpho_mnist"
+dataset = "shapes2D"
 ratios = (0.8,0.199,0.001)
 if test 
-    data = HierarchicalAD.load_mnist("train")
+    data = HierarchicalAD.load_shapes2D()
     tr_x = HierarchicalAD.sample_tensor(data, 1000)
     val_x = HierarchicalAD.sample_tensor(data, 1000)
     tst_x = HierarchicalAD.sample_tensor(data, 100)
-    tr_y, val_y, tst_y = nothing, nothing, nothing
-    a_x, a_y = HierarchicalAD.sample_tensor(HierarchicalAD.load_mnist("test"), 1000), nothing
+    a_x = HierarchicalAD.sample_tensor(data, 1000)
+    tr_y, val_y, tst_y, a_y = nothing, nothing, nothing
 else
     (tr_x, tr_y), (val_x, val_y), (tst_x, tst_y), (a_x, a_y) = 
         HierarchicalAD.load_train_val_test_data(dataset, filter_dict; ratios=ratios, seed=seed,
-            categorical_key="digit")
+            categorical_key="shape")
 end
 if epochsize == nothing
     epochsize = size(tr_x, 4)

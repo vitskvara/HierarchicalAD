@@ -146,7 +146,8 @@ if test
     a_x, a_y = HierarchicalAD.sample_tensor(HierarchicalAD.load_mnist("test"), 1000), nothing
 else
     (tr_x, tr_y), (val_x, val_y), (tst_x, tst_y), (a_x, a_y) = 
-        HierarchicalAD.load_train_val_test_data(dataset, filter_dict; ratios=ratios, seed=seed)
+        HierarchicalAD.load_train_val_test_data(dataset, filter_dict; ratios=ratios, seed=seed,
+            categorical_key="digit")
 end
 if epochsize == nothing
     epochsize = size(tr_x, 4)
