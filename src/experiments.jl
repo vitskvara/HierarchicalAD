@@ -129,3 +129,20 @@ function load_train_val_test_data(dataset, filter_dict=Dict(); ratios=(0.6,0.2,0
 
     (tr_x, tr_y), (val_x, val_y), (tst_x, tst_y), (a_x, a_y)
 end
+
+# stuff for run scripts
+function get_filter_info(experiment_argnames, args, arg_table)
+    # construct the Dictionary with filters and their values
+    filter_keys = filter(k->!(k in experiment_argnames),keys(args))
+    filter_dict = Dict(zip(filter_keys, [args[k] for k in filter_keys]))
+
+    # also, set which arguments are non-default
+    non_default_filters = []
+    for k in filter_keys
+        argind = findfirst(map(f->f.dest_name == k,arg_table.args_table.fields))
+        (arg_table.args_table.fields[argind].default == filter_dict[k]) ? nothing : 
+            push!(non_default_filters, k)
+    end
+
+    filter_dict, non_default_filters
+end

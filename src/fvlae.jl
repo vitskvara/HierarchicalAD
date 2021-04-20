@@ -68,11 +68,33 @@ function factor_aeloss(m, x::AbstractArray{T,4}, γ::Float32) where T
 	-elbo + γ*tcl
 end
 
+function permutation_mat_cols(x::AbstractArray{T,2}) where T # permutation per latent
+	m,n = size(x)
+	perm_mat = fill!(similar(x, n, n), 0)
+	for (j,i) in zip(1:n, sample(1:n, n, replace=false))
+		perm_mat[j,i] = 1
+	end
+	perm_mat
+end
+function permutation_mat_rows(x::AbstractArray{T,2}) where T 
+	m,n = size(x)
+	perm_mat = fill!(similar(x, m, m), 0)
+	for (j,i) in zip(1:m, sample(1:m, m, replace=false))
+		perm_mat[j,i] = 1
+	end
+	perm_mat
+end
+function permute_rows(x::AbstractArray{T,2}) where T # permutation per latent dim
+    vcat(map(i->HierarchicalAD.permute_mat_cols(x[i:i,:]), 1:size(x,1))...)
+end
+permute_mat_rows(x::AbstractArray{T,2}) where T = permutation_mat_rows(x)*x
+permute_mat_cols(x::AbstractArray{T,2}) where T = x*permutation_mat_cols(x)
+permute_mat(x::AbstractArray{T,2}) where T = permute_rows(x)  
+Flux.Zygote.@nograd permute_mat_rows, permute_mat_cols, permute_mat, permute_rows
+
 function factor_closs(m, x::AbstractArray{T,4}) where T
 	zs = encode_all(m, x)
 	zps = map(zs) do z
-		#pm = permute_mat(z)
-		#z*pm
 		zp = permute_mat(z)
 		zp
 	end
@@ -81,36 +103,26 @@ function factor_closs(m, x::AbstractArray{T,4}) where T
 	dloss(m.c, _zs, _zps)
 end
 
-function permutation_mat(x::AbstractArray{T,2}) where T
-	m,n = size(x)
-	perm_mat = fill!(similar(x, n, n), 0)
-	for (j,i) in zip(1:n, sample(1:n, n, replace=false))
-		perm_mat[j,i] = 1
-	end
-	perm_mat
-end
-permute_mat(x::AbstractArray{T,2}) where T = x*permutation_mat(x)
-Flux.Zygote.@nograd permute_mat, permutation_mat
 
 """
 	train_fvlae(zdim, hdim, batchsize, ks, ncs, stride, nepochs, data, val_x, tst_x; 
 	λ=0.0f0, γ=1.0f0, epochsize = size(data,4), layer_depth=1, lr=0.001f0, var=:dense, 
-	activation=activation, discriminator_nlayers=3, xdist=:gaussian)
+	activation=activation, discriminator_nlayers=3, xdist=:gaussian, pad=0)
 
 Train a factored VLAE.
 """
 function train_fvlae(zdim, hdim, batchsize, ks, ncs, str, nepochs, data, val_x, tst_x; 
 	λ=0.0f0, γ=1.0f0, epochsize = size(data,4), layer_depth=1, lr=0.001f0, var=:dense, 
-	activation=activation, discriminator_nlayers=3, xdist=:gaussian)
+	activation=activation, discriminator_nlayers=3, xdist=:gaussian, pad=0)
 
 	gval_x = gpu(val_x[:,:,:,1:min(1000, size(val_x,4))]);
 	gtst_x = gpu(tst_x);
 	
 	model = gpu(FVLAE(zdim, hdim, ks, ncs, str, size(data), layer_depth=layer_depth, var=var, 
-		activation=activation, nlayers=discriminator_nlayers, xdist=xdist))
+		activation=activation, nlayers=discriminator_nlayers, xdist=xdist, pad=pad))
 	nl = length(model.e)
 	
-	aeps = Flux.params(model.e, model.d)
+	aeps = Flux.params(model.e, model.d, model.f, model.g)
 	cps = Flux.params(model.c)
 	aeopt = ADAM(lr)
 	copt = ADAM(lr)
@@ -153,4 +165,3 @@ function train_fvlae(zdim, hdim, batchsize, ks, ncs, str, nepochs, data, val_x, 
 	
 	return model, hist, rdata, zs
 end
-

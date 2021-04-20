@@ -5,8 +5,8 @@ using CSV, DataFrames
 using HierarchicalAD
 using Flux, CUDA
 
-s = ArgParseSettings()
-@add_arg_table s begin
+arg_table = ArgParseSettings()
+@add_arg_table arg_table begin
     "latent_dim"
         arg_type = Int
         default = 2
@@ -24,6 +24,10 @@ s = ArgParseSettings()
         arg_type = String
         default = "test"
         help = "subdir of data/models"
+    "--discriminator_nlayers"
+        arg_type = Int
+        default = 3
+        help = "number of discriminator layers"
     "--kernelsizes"
         arg_type = Int
         nargs = '*'
@@ -70,6 +74,10 @@ s = ArgParseSettings()
     "--last_conv"
         action = :store_true
         help = "should the last layer of decoder be a dense or a conv layer"
+    "--pad"
+        arg_type = Int
+        default = 0
+        help = "padding"
     "--lr"
         help = "learning rate"
         arg_type = Float32
@@ -112,9 +120,10 @@ s = ArgParseSettings()
         nargs = 2
         default = [">=", "0"]
 end
-args = parse_args(s)
+args = parse_args(arg_table)
 @unpack latent_dim, hdim, channels, kernelsizes, stride, layer_depth, last_conv, seed, test,
-    lambda, batchsize, nepochs, gpu_id, epochsize, savepath, lr, activation, gamma, xdist = args
+    lambda, batchsize, nepochs, gpu_id, epochsize, savepath, lr, activation, gamma, xdist,
+    pad, discriminator_nlayers = args
 latent_count = length(channels)
 (latent_count <= length(kernelsizes)) ? nothing : error("number of kernels and channels does not match.")
 out_var = last_conv ? :conv : :dense
@@ -124,18 +133,10 @@ end
 CUDA.device!(gpu_id)
 
 # get filters
-filter_keys = filter(k->!(k in 
-    ["latent_dim", "hdim", "channels", "kernelsizes", "stride", "layer_depth", "last_conv", 
+experiment_argnames = ["latent_dim", "hdim", "channels", "kernelsizes", "stride", "layer_depth", "last_conv", 
     "seed", "lambda", "batchsize", "nepochs", "gpu_id", "epochsize", "savepath", "lr", 
-    "activation", "gamma", "xdist", "test"]),keys(args))
-filter_dict = Dict(zip(filter_keys, [args[k] for k in filter_keys]))
-
-# also, set which arguments are non-default
-non_default_filters = []
-for k in filter_keys
-    argind = findfirst(map(f->f.dest_name == k,s.args_table.fields))
-    (s.args_table.fields[argind].default == filter_dict[k]) ? nothing : push!(non_default_filters, k)
-end
+    "activation", "gamma", "xdist", "test", "pad", "discriminator_nlayers"]
+filter_dict, non_default_filters = HierarchicalAD.get_filter_info(experiment_argnames, args, arg_table)
 
 # get the data
 dataset = "shapes2D"
@@ -162,7 +163,8 @@ ks = [(k,k) for k in kernelsizes][1:latent_count]
 model, training_history, reconstructions, latent_representations = 
     HierarchicalAD.train_fvlae(latent_dim, hdim, batchsize, ks, ncs, stride, nepochs, tr_x, 
         val_x, tst_x; λ=lambda, γ=gamma, epochsize=epochsize, layer_depth=layer_depth, lr=lr, 
-        var=out_var, activation=activation, xdist=xdist)
+        var=out_var, activation=activation, xdist=xdist, pad=pad, 
+        discriminator_nlayers=discriminator_nlayers)
 
 Flux.Zygote.ignore() do
     # compute scores
@@ -180,7 +182,7 @@ Flux.Zygote.ignore() do
         latent_dim=latent_dim, channels=ncs, kernelsizes=ks, stride=stride, layer_depth=layer_depth, 
         last_conv=last_conv, lr=lr, activation=activation, seed=seed, lambda=lambda, 
         batchsize=batchsize, nepochs=nepochs, gpu_id=gpu_id, epochsize=epochsize, gamma=gamma, 
-        hdim=hdim, xdist=xdist, test=test)
+        hdim=hdim, xdist=xdist, test=test, pad=pad, discriminator_nlayers=discriminator_nlayers)
     save_args = (model_id=model_id, data=dataset, model="fvlae", latent_dim=latent_dim,
         channels=channels,gamma=gamma, lambda=lambda, activation=activation, xdist=xdist)
     svn = HierarchicalAD.safe_savename(save_args, "bson", digits=5)

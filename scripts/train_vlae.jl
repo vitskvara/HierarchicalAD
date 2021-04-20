@@ -5,8 +5,8 @@ using CSV, DataFrames
 using HierarchicalAD
 using Flux, CUDA
 
-s = ArgParseSettings()
-@add_arg_table s begin
+arg_table = ArgParseSettings()
+@add_arg_table arg_table begin
     "latent_dim"
         arg_type = Int
         default = 2
@@ -109,7 +109,7 @@ s = ArgParseSettings()
         nargs = 2
         default = [">=", "0"]
 end
-args = parse_args(s)
+args = parse_args(arg_table)
 @unpack latent_dim, channels, kernelsizes, stride, layer_depth, last_conv, seed, lambda, batchsize, nepochs, 
     gpu_id, epochsize, savepath, lr, activation, xdist, test = args
 latent_count = length(channels)
@@ -121,18 +121,10 @@ end
 CUDA.device!(gpu_id)
 
 # get filters
-filter_keys = filter(k->!(k in 
-    ["latent_dim", "channels", "kernelsizes", "stride", "layer_depth", "last_conv", "seed", 
+experiment_argnames = ["latent_dim", "channels", "kernelsizes", "stride", "layer_depth", "last_conv", "seed", 
     "lambda", "batchsize", "nepochs", "gpu_id", "epochsize", "savepath", "lr", "activation", 
-    "xdist", "test"]),keys(args))
-filter_dict = Dict(zip(filter_keys, [args[k] for k in filter_keys]))
-
-# also, set which arguments are non-default
-non_default_filters = []
-for k in filter_keys
-    argind = findfirst(map(f->f.dest_name == k,s.args_table.fields))
-    (s.args_table.fields[argind].default == filter_dict[k]) ? nothing : push!(non_default_filters, k)
-end
+    "xdist", "test"]
+filter_dict, non_default_filters = HierarchicalAD.get_filter_info(experiment_argnames, args, arg_table)
 
 # get the data
 dataset = "morpho_mnist"

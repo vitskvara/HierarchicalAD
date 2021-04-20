@@ -50,7 +50,7 @@ end
 
 # constructors
 function basic_model_constructor(zdim::Int, ks, ncs, strd, datasize; layer_depth=1, 
-    var=:dense, activation="relu", xdist=:gaussian, kwargs...)
+    var=:dense, activation="relu", xdist=:gaussian, pad=0, kwargs...)
     nl = length(ncs) # no layers
 
     # number of channels for encoder/decoder
@@ -67,7 +67,7 @@ function basic_model_constructor(zdim::Int, ks, ncs, strd, datasize; layer_depth
     # encoder/decoder
     if strd in [1,2]
         e, d = ae_constructor(indim, strd, ks, rks, ncs_in_e, ncs, ncs_in_d, 
-                ncs_out_d, af, nl, xdist, var, datasize) 
+                ncs_out_d, af, nl, xdist, var, datasize, pad) 
     else
         error("Requested stride length $strd not implemented.") 
     end
@@ -108,25 +108,27 @@ function basic_model_constructor(zdim::Int, ks, ncs, strd, datasize; layer_depth
 end
 
 function ae_constructor(indim, strd, ks, rks, ncs_in_e, ncs_out_e, ncs_in_d, ncs_out_d, af, 
-    nl, xdist, var, datasize)
+    nl, xdist, var, datasize, pad=0)
 
     # encoder/decoder
     # negative striding does not work on GPU
     e = Tuple([Conv(ks[i], ncs_in_e[i]=>ncs_out_e[i], af, stride=strd) for i in 1:nl])
     if xdist == :bernoulli
         d = Tuple([[ConvTranspose(rks[i], ncs_in_d[i]=>ncs_out_d[i], af, stride=strd, 
-                        pad=0) for i in 1:nl-1]...,
+                        pad=pad) for i in 1:nl-1]...,
                     Chain(
-                        ConvTranspose(rks[end], ncs_in_d[end]=>ncs_out_d[end], σ, stride=strd,
-                            pad=0),
-                        AdaptiveMeanPool((datasize[1:2]...,)))]
+                        ConvTranspose(rks[end], ncs_in_d[end]=>ncs_out_d[end], af, stride=strd,
+                            pad=pad),
+                        AdaptiveMeanPool((datasize[1:2]...,)),
+                        Conv((1,1), datasize[3]=>datasize[3], σ)
+                        )]
                 )
     elseif var == :dense
         d = Tuple([[ConvTranspose(rks[i], ncs_in_d[i]=>ncs_out_d[i], af, stride=strd,
-                        pad=0) for i in 1:nl-1]..., 
+                        pad=pad) for i in 1:nl-1]..., 
                 Chain(
                     ConvTranspose(rks[end], ncs_in_d[end]=>ncs_out_d[end], af, stride=strd,
-                        pad=0),
+                        pad=pad),
                     AdaptiveMeanPool((datasize[1:2]...,)),
                     x->reshape(x, :, size(x,4)),
                     Dense(indim, indim+1)
@@ -134,11 +136,13 @@ function ae_constructor(indim, strd, ks, rks, ncs_in_e, ncs_out_e, ncs_in_d, ncs
     elseif var == :conv
         ncs_out_d[end] += 1
         d = Tuple([[ConvTranspose(rks[i], ncs_in_d[i]=>ncs_out_d[i], af, stride=strd,
-                        pad=0) for i in 1:nl-1]...,
+                        pad=pad) for i in 1:nl-1]...,
                     Chain(
-                        ConvTranspose(rks[end], ncs_in_d[end]=>ncs_out_d[end], stride=strd,
-                            pad=0),
-                        AdaptiveMeanPool((datasize[1:2]...,)))
+                        ConvTranspose(rks[end], ncs_in_d[end]=>ncs_out_d[end], af, stride=strd,
+                            pad=pad),
+                        AdaptiveMeanPool((datasize[1:2]...,)),
+                        Conv((1,1), datasize[3]=>datasize[3])
+                        )
                     ])
     else
         error("Decoder var=$var not implemented! Try one of `[:dense, :conv]`.")
@@ -150,6 +154,7 @@ end
 function discriminator_constructor(zdim::Int, hdim::Int, nlayers::Int; activation="relu", kwargs...)
     (nlayers >= 2) ? nothing : error("`nlayers` must be at least 2.")
     af = (typeof(activation) <: Function) ? activation : eval(Meta.parse(activation))
+    af = leakyrelu
     Chain(
         Dense(zdim, hdim, af), 
         [Dense(hdim, hdim, af) for _ in 1:nlayers-2]...,

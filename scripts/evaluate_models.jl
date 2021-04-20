@@ -23,6 +23,7 @@ args = parse_args(s)
 function evaluate_model(modeldata, modelfile)
 	@unpack model, training_history = modeldata
 	gmodel = gpu(model)
+	cat_keys = ["digit", "shape"]
 
 	# now print some info
 	println("\n")
@@ -36,7 +37,7 @@ function evaluate_model(modeldata, modelfile)
 	println("  non-default filters => ")
 	for f in modeldata[:non_default_filters]
 		fv = modeldata[:filter_dict][f]
-		if f != "digit"
+		if !(f in cat_keys)
 			println("    $(f) $(fv[1]) $(fv[2])")
 		else
 			println("    $(f) $(fv)")
@@ -57,8 +58,11 @@ function evaluate_model(modeldata, modelfile)
 	ratios = modeldata[:ratios]
 	filter_dict = modeldata[:filter_dict]
 	seed = modeldata[:experiment_args].seed
+	cat_key = cat_keys[map(k->any(map(x->x==k, collect(keys(filter_dict)))), cat_keys)]
+	cat_key = length(cat_key) == 0 ? nothing : cat_key[1]
 	(tr_x, tr_y), (val_x, val_y), (tst_x, tst_y), (a_x, a_y) = 
-	    HierarchicalAD.load_train_val_test_data(dataset, filter_dict; ratios=ratios, seed=seed)
+	    HierarchicalAD.load_train_val_test_data(dataset, filter_dict; ratios=ratios, seed=seed,
+	    	categorical_key=cat_key)
 
 	# plots
 	# 01 plot training
@@ -83,13 +87,13 @@ function evaluate_model(modeldata, modelfile)
 	@unpack tr_scores, val_scores, tst_scores, a_scores, non_default_filters = modeldata;
 
 	# digit anomalies
-	p=plot_anomalies_digit(tr_y, a_y, tr_scores, val_scores, a_scores)
-	svn = joinpath(plotpath, "$(model_id)_04_anomalies_digits.png")
+	p=plot_anomalies_cat_factor(tr_y, a_y, tr_scores, val_scores, a_scores, Symbol(cat_key))
+	svn = joinpath(plotpath, "$(model_id)_04_anomalies_cat_factor.png")
 	savefig(svn)
 	@info "Saved $svn"
 
 	# other anomalies
-	p=plot_anomalies_other(non_default_filters, filter_dict, a_y, tr_scores, a_scores)
+	p=plot_anomalies_other(non_default_filters, filter_dict, a_y, tr_scores, a_scores, cat_key)
 	svn = joinpath(plotpath, "$(model_id)_05_anomalies_others.png")
 	savefig(svn)
 	@info "Saved $svn"
@@ -100,21 +104,26 @@ function evaluate_model(modeldata, modelfile)
 	@unpack tr_encodings, val_encodings, tst_encodings, a_encodings = modeldata;
 	nl = length(model.e)
 	mmd_dict = Dict()
+	# subsample anomalies
+	na = size(a_y, 1)
+	subinds = sample(1:na, min(na, 10000), replace=false)
+	a_y = a_y[subinds, :]
+	a_encodings = map(x->x[:,subinds], a_encodings)
 
 	# digit identity
-	cat_vals = sort(unique(tr_y[!,:digit]))
-	category = :digit
-	p,mmds=plot_latent(cat_vals, category, tr_y, k, tr_encodings..., dims=[1,2])
+	cat_vals = sort(unique(tr_y[!,Symbol(cat_key)]))
+	p,mmds=plot_latent(cat_vals, Symbol(cat_key), tr_y, k, tr_encodings..., dims=[1,2])
 	plot(p)
 	svn = joinpath(plotpath, "$(model_id)_06_encodings_train_digits.png")
 	savefig(svn)
 	@info "Saved $svn"
-	print_mmd_overview(category, cat_vals, mmds)
-	mmd_dict[String(category)] = mmds
+	print_mmd_overview(Symbol(cat_key), cat_vals, mmds)
+	mmd_dict[String(cat_key)] = mmds
 
 	# other filters
 	nbins = 5
-	p, mmds = mmd_overview_other(nbins, non_default_filters, tr_y, tr_encodings, k, model) 
+	p, mmds = mmd_overview_other(nbins, non_default_filters, tr_y, tr_encodings, k, model, 
+		cat_key) 
 	plot(p)
 	svn = joinpath(plotpath, "$(model_id)_07_encodings_train_other.png")
 	savefig(svn)
@@ -123,7 +132,7 @@ function evaluate_model(modeldata, modelfile)
 
 	# now compare normal vs anomalous
 	p, mmds = mmd_overview_anomalies(tr_y, a_y, tr_encodings, a_encodings, non_default_filters, 
-		k, filter_dict)
+		k, filter_dict, cat_key)
 	print_mmd_overview_anomalies(mmds)
 	plot(p)
 	svn = joinpath(plotpath, "$(model_id)_08_encodings_anomalies.png")
