@@ -49,6 +49,39 @@ function param_update!(loss, ps, x, opt)
 end
 
 # constructors
+function basic_model_constructor(zdim, hdims, indim; activation=activation, layer_depth=1,
+        kwargs...)
+    # activation function
+    af = (typeof(activation) <: Function) ? activation : eval(Meta.parse(activation))
+
+    # check that hdimensions are even
+    all((hdims .% 2 ).== 0) ? nothing : error("hdims have to be even")
+
+    # encoder
+    e_h_in = vcat([indim], Int.([hdims[1:end-1]...]./2))
+    e_h_out = [hdims...]
+    e_afs = vcat([af for _ in 1:length(hdims)], [identity])
+    e = Tuple([Dense(h_in, h_out, f) for (h_in, h_out, f) in zip(e_h_in, e_h_out, e_afs)])
+
+    # decoder
+    d_h_in = reverse([hdims...])
+    d_h_out = vcat(Int.([reverse(hdims)[2:end]...]./2), [indim*2])
+    d_afs = e_afs
+    d = Tuple([Dense(h_in, h_out, f) for (h_in, h_out, f) in zip(d_h_in, d_h_out, d_afs)])
+
+    # g network
+    g_h_in = Int.([hdims...]./2)
+    g_h_out = [zdim*2 for _ in 1:length(hdims)]
+    g = Tuple([Dense(h_in, h_out) for (h_in, h_out) in zip(g_h_in, g_h_out)])
+    
+    # f network
+    f_h_in = [zdim for _ in 1:length(hdims)]
+    f_h_out = Int.([reverse(hdims)...]./2)
+    f_h_out[1] *= 2
+    f = Tuple([Dense(h_in, h_out, af) for (h_in, h_out) in zip(f_h_in, f_h_out)])
+    
+    e,d,g,f
+end
 function basic_model_constructor(zdim::Int, ks, ncs, strd, datasize; layer_depth=1, 
     var=:dense, activation="relu", xdist=:gaussian, pad=0, kwargs...)
     nl = length(ncs) # no layers
@@ -154,7 +187,6 @@ end
 function discriminator_constructor(zdim::Int, hdim::Int, nlayers::Int; activation="relu", kwargs...)
     (nlayers >= 2) ? nothing : error("`nlayers` must be at least 2.")
     af = (typeof(activation) <: Function) ? activation : eval(Meta.parse(activation))
-    af = leakyrelu
     Chain(
         Dense(zdim, hdim, af), 
         [Dense(hdim, hdim, af) for _ in 1:nlayers-2]...,

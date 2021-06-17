@@ -18,12 +18,24 @@ function _encoded_mu_vars(m::AbstractVLAE, x)
     h = x
     mu_vars = map(1:nl) do i
         h = m.e[i](h)
-        nch = floor(Int,size(h,3)/2)
-        μz, σz = mu_var(m.g[i](h[:,:,(nch+1):end,:]))
-        h = h[:,:,1:nch,:]
+        h, μz, σz = _extract_mu_var(m.g, h, i)
         (μz, σz)
     end
     mu_vars
+end
+
+function _extract_mu_var(g, h::AbstractArray{T,4}, i) where T
+    nch = floor(Int,size(h,3)/2)
+    μz, σz = mu_var(g[i](h[:,:,(nch+1):end,:]))
+    h = h[:,:,1:nch,:]
+    h, μz, σz
+end
+
+function _extract_mu_var(g, h::AbstractArray{T,2}, i) where T
+    nch = floor(Int,size(h,1)/2)
+    μz, σz = mu_var(g[i](h[(nch+1):end,:]))
+    h = h[1:nch,:]
+    h, μz, σz
 end
 
 function _decoder_out(m::AbstractVLAE, zs...)
@@ -35,14 +47,20 @@ function _decoder_out(m::AbstractVLAE, zs...)
     for i in 1:nl-1
         h1 = m.d[i](h)
         h2 = m.f[i+1](zs[end-i])
-        h = cat(h1, h2, dims=3)
+        h = _cat_arrays(h1, h2)
     end
     h = m.d[end](h)
 end
 function _decoded_mu_var(m::AbstractVLAE, zs...)
     h = _decoder_out(m, zs...)
+    μx, σx = mu_var(h)
+end
+function _decoded_mu_var1(m::AbstractVLAE, zs...)
+    h = _decoder_out(m, zs...)
     μx, σx = mu_var1(h)
 end
+_cat_arrays(h1::AbstractArray{T,4}, h2::AbstractArray{T,4}) where T = cat(h1, h2, dims=3)
+_cat_arrays(h1::AbstractArray{T,2}, h2::AbstractArray{T,2}) where T = cat(h1, h2, dims=1)
 
 function encode(m::AbstractVLAE, x, i::Int)
     μzs_σzs = _encoded_mu_vars(m, x)
@@ -56,8 +74,14 @@ function encode_all(m::AbstractVLAE, x, batchsize::Int)
 end
 
 function decode(m::AbstractVLAE, zs...)
-    if m.xdist == Val(:gaussian)
+    # this is for 2D data
+    if length(m.xdim) == 1
         μx, σx = _decoded_mu_var(m, zs...)
+        return rptrick(μx, σx)
+    end
+    # this is for images
+    if m.xdist == Val(:gaussian)
+        μx, σx = _decoded_mu_var1(m, zs...)
         return devectorize(rptrick(μx, σx), m.xdim...)
     else # bernoulli
         return _decoder_out(m, zs...)

@@ -6,6 +6,15 @@ morpho_mnist_labels() = CSV.read(datadir("morpho_mnist/labels.csv"), DataFrame)
 	filter_data(full_labels::DataFrame, filter_dict::Dict)
 
 Filter the data given the full labels and a dict of filters.
+
+Example:
+filter_dict_a = Dict(
+    "shape" => [1],
+    "normalized_orientation" => ["<=", 0.1],
+    "scale" => ["==", 0.8],
+    "posX" => ["<", 0.5],
+    "posY" => ["<", 0.5],
+    )
 """
 function filter_data(full_labels, filter_dict; categorical_key=nothing)
     ks = keys(filter_dict)
@@ -14,7 +23,24 @@ function filter_data(full_labels, filter_dict; categorical_key=nothing)
         Bool.(ones(size(full_labels,1)))
     for k in filter(k->k != categorical_key, ks)
         kp = filter_dict[k]
-        ff(x) = eval(Meta.parse("$x $(kp[1]) $(kp[2])"))
+        #ff(x) = eval(Meta.parse("$x $(kp[1]) $(kp[2])")) # this is slow
+        val = Float64(Meta.parse("$(kp[2])"))
+        # this is ugly but fast
+        ff(x) = if kp[1] == "=="
+            x == val
+        elseif kp[1] == "<="
+            x <= val
+        elseif kp[1] == "<"
+            x < val
+        elseif kp[1] == ">="
+            x >= val
+        elseif kp[1] == ">"
+            x > val
+        elseif kp[1] == "!="
+            x != val
+        else
+            error("Unknown operator, please support one of [==, <, <=, >, >=, !=]")
+        end 
         bin_inds = bin_inds .& map(ff, full_labels[!,Symbol(k)])
     end
     return bin_inds
