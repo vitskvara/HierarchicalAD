@@ -49,7 +49,7 @@ function param_update!(loss, ps, x, opt)
 end
 
 # constructors
-function basic_model_constructor(zdim, hdims, indim; activation=activation, layer_depth=1,
+function basic_model_constructor(zdim, hdims, indim; activation=relu, layer_depth=1,
         kwargs...)
     # activation function
     af = (typeof(activation) <: Function) ? activation : eval(Meta.parse(activation))
@@ -66,7 +66,7 @@ function basic_model_constructor(zdim, hdims, indim; activation=activation, laye
     # decoder
     d_h_in = reverse([hdims...])
     d_h_out = vcat(Int.([reverse(hdims)[2:end]...]./2), [indim*2])
-    d_afs = e_afs
+    d_afs = e_afs[2:end]
     d = Tuple([Dense(h_in, h_out, f) for (h_in, h_out, f) in zip(d_h_in, d_h_out, d_afs)])
 
     # g network

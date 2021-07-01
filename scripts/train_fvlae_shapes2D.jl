@@ -162,7 +162,7 @@ ncs = channels
 ks = [(k,k) for k in kernelsizes][1:latent_count]
 model, training_history, reconstructions, latent_representations = 
     HierarchicalAD.train_fvlae(latent_dim, hdim, batchsize, ks, ncs, stride, nepochs, tr_x, 
-        val_x, tst_x; λ=lambda, γ=gamma, epochsize=epochsize, layer_depth=layer_depth, lr=lr, 
+        val_x; λ=lambda, γ=gamma, epochsize=epochsize, layer_depth=layer_depth, lr=lr, 
         var=out_var, activation=activation, xdist=xdist, pad=pad, 
         discriminator_nlayers=discriminator_nlayers)
 
