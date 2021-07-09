@@ -18,22 +18,22 @@ function _encoded_mu_vars(m::AbstractVLAE, x)
     h = x
     mu_vars = map(1:nl) do i
         h = m.e[i](h)
-        h, μz, σz = _extract_mu_var(m.g, h, i)
+        h, μz, σz = _extract_mu_var(m.f, h, i)
         (μz, σz)
     end
     mu_vars
 end
 
-function _extract_mu_var(g, h::AbstractArray{T,4}, i) where T
+function _extract_mu_var(f, h::AbstractArray{T,4}, i) where T
     nch = floor(Int,size(h,3)/2)
-    μz, σz = mu_var(g[i](h[:,:,(nch+1):end,:]))
+    μz, σz = mu_var(f[i](h[:,:,(nch+1):end,:]))
     h = h[:,:,1:nch,:]
     h, μz, σz
 end
 
-function _extract_mu_var(g, h::AbstractArray{T,2}, i) where T
+function _extract_mu_var(f, h::AbstractArray{T,2}, i) where T
     nch = floor(Int,size(h,1)/2)
-    μz, σz = mu_var(g[i](h[(nch+1):end,:]))
+    μz, σz = mu_var(f[i](h[(nch+1):end,:]))
     h = h[1:nch,:]
     h, μz, σz
 end
@@ -42,11 +42,11 @@ function _decoder_out(m::AbstractVLAE, zs...)
     nl = length(m.d)
     @assert length(zs) == nl
     
-    h = m.f[1](zs[end])
+    h = m.g[1](zs[end])
     # now, propagate through the decoder
     for i in 1:nl-1
         h1 = m.d[i](h)
-        h2 = m.f[i+1](zs[end-i])
+        h2 = m.g[i+1](zs[end-i])
         h = _cat_arrays(h1, h2)
     end
     h = m.d[end](h)
@@ -66,7 +66,7 @@ function encode(m::AbstractVLAE, x, i::Int)
     μzs_σzs = _encoded_mu_vars(m, x)
     rptrick(μzs_σzs[i]...)
 end
-encode(m::AbstractVLAE, x) = encode(m, x, length(m.g))
+encode(m::AbstractVLAE, x) = encode(m, x, length(m.f))
 encode_all(m::AbstractVLAE, x) = Tuple(map(y->rptrick(y...), _encoded_mu_vars(m, x)))
 function encode_all(m::AbstractVLAE, x, batchsize::Int)
     encs = map(y->cpu(encode_all(gpu(m), gpu(y))), Flux.Data.DataLoader(x, batchsize=batchsize))
@@ -90,11 +90,12 @@ end
 
 reconstruct(m::AbstractVLAE, x) = decode(m, encode_all(m, x)...)
 
-function reconstruction_probability(m::AbstractVLAE, x)  
-    x = gpu(x)
+function reconstruction_probability(m::AbstractVLAE, x::AbstractArray{T,2}) where T  
     zs = map(y->rptrick(y...), _encoded_mu_vars(m, x))
     return -logpdf(m, x, zs...)
 end
+reconstruction_probability(m::AbstractVLAE, x::AbstractArray{T,4}) where T = 
+    reconstruction_probability(m, gpu(x))
 reconstruction_probability(m::AbstractVLAE, x, L::Int) = mean([reconstruction_probability(m,x) for _ in 1:L])
 function reconstruction_probability(m::AbstractVLAE, x, L::Int, batchsize::Int)
     vcat(map(b->cpu(reconstruction_probability(m, b, L)), Flux.Data.DataLoader(x, batchsize=batchsize))...)
@@ -111,4 +112,4 @@ function generate(m::AbstractVLAE, n::Int)
     cpu(decode(m, zs...))
 end
 
-is_gpu(m::AbstractVLAE) = typeof(m.g[1][2].W) <: Flux.CUDA.CuArray
+is_gpu(m::AbstractVLAE) = typeof(m.f[1][2].W) <: Flux.CUDA.CuArray

@@ -22,6 +22,19 @@ KNNAnomaly(k::Int, v::Symbol, tree_type::Symbol = :BruteTree) =
     KNNAnomaly(eval(tree_type)(Array{Float32,2}(undef, 1, 0)), Array{Float32,2}(undef, 1, 0), Val(v), k,
         tree_type)
 
+function Base.show(io::IO, m::KNNAnomaly)
+    k = m.k
+    v = split(split(string((m.v)), "{")[2], "}")[1]
+    t = nameof(typeof(m.t))
+    fitted = (length(m.t.data) != 0)
+    msg = """$(nameof(typeof(m))):
+        k         = $k 
+        method    = $v
+        tree type = $t
+        is fitted = $fitted
+    """
+    print(io, msg)
+end
 
 """
     fit!(model::KNNAnomaly, X::Array{T, 2})
@@ -64,4 +77,4 @@ StatsBase.predict(model::KNNAnomaly, x, k) = StatsBase.predict(model, x, k, mode
 StatsBase.predict(model::KNNAnomaly, x, v::Symbol) = StatsBase.predict(model, x, model.k, v)
 StatsBase.predict(model::KNNAnomaly, x) = StatsBase.predict(model, x, model.k, model.v)
 
-knn_constructor(;k::Int=1,v::Symbol=:kappa) = KNNAnomaly(k, v)
+knn_constructor(;k::Int=1,v::Symbol=:kappa,t=:BruteTree) = KNNAnomaly(k, v, t)

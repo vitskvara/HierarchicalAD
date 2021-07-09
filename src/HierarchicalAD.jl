@@ -34,6 +34,7 @@ include("experiments.jl")
 include("shapes2d.jl")
 include("data.jl")
 include("knn.jl")
+include("evaluation.jl")
 
 export VLAE, FVLAE, AbstractVLAE
 

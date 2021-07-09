@@ -61,26 +61,40 @@ function basic_model_constructor(zdim, hdims, indim; activation=relu, layer_dept
     e_h_in = vcat([indim], Int.([hdims[1:end-1]...]./2))
     e_h_out = [hdims...]
     e_afs = vcat([af for _ in 1:length(hdims)], [identity])
-    e = Tuple([Dense(h_in, h_out, f) for (h_in, h_out, f) in zip(e_h_in, e_h_out, e_afs)])
+    e = []
+    for (h_in, h_out, f) in zip(e_h_in, e_h_out, e_afs)
+        hs = vcat(repeat([h_in], layer_depth), [h_out])
+        fs = (f == identity) ? vcat([af for _ in 1:layer_depth-1], [f]) : [f for _ in 1:layer_depth]
+        layer =  Chain([Dense(hs[i], hs[i+1], fs[i]) for i in 1:layer_depth]...)
+        push!(e, layer)
+    end
+    e = Tuple(e)
 
     # decoder
     d_h_in = reverse([hdims...])
     d_h_out = vcat(Int.([reverse(hdims)[2:end]...]./2), [indim*2])
     d_afs = e_afs[2:end]
-    d = Tuple([Dense(h_in, h_out, f) for (h_in, h_out, f) in zip(d_h_in, d_h_out, d_afs)])
+    d = []
+    for (h_in, h_out, f) in zip(d_h_in, d_h_out, d_afs)
+        hs = vcat([h_in], repeat([h_out], layer_depth))
+        fs = (f == identity) ? vcat([af for _ in 1:layer_depth-1], [f]) : [f for _ in 1:layer_depth]
+        layer =  Chain([Dense(hs[i], hs[i+1], fs[i]) for i in 1:layer_depth]...)
+        push!(d, layer) 
+    end
+    d = Tuple(d)
 
-    # g network
-    g_h_in = Int.([hdims...]./2)
-    g_h_out = [zdim*2 for _ in 1:length(hdims)]
-    g = Tuple([Dense(h_in, h_out) for (h_in, h_out) in zip(g_h_in, g_h_out)])
-    
     # f network
-    f_h_in = [zdim for _ in 1:length(hdims)]
-    f_h_out = Int.([reverse(hdims)...]./2)
-    f_h_out[1] *= 2
-    f = Tuple([Dense(h_in, h_out, af) for (h_in, h_out) in zip(f_h_in, f_h_out)])
+    f_h_in = Int.([hdims...]./2)
+    f_h_out = [zdim*2 for _ in 1:length(hdims)]
+    f = Tuple([Dense(h_in, h_out) for (h_in, h_out) in zip(f_h_in, f_h_out)])
     
-    e,d,g,f
+    # g network
+    g_h_in = [zdim for _ in 1:length(hdims)]
+    g_h_out = Int.([reverse(hdims)...]./2)
+    g_h_out[1] *= 2
+    g = Tuple([Dense(h_in, h_out, af) for (h_in, h_out) in zip(g_h_in, g_h_out)])
+    
+    e,d,f,g
 end
 function basic_model_constructor(zdim::Int, ks, ncs, strd, datasize; layer_depth=1, 
     var=:dense, activation="relu", xdist=:gaussian, pad=0, kwargs...)
@@ -131,13 +145,13 @@ function basic_model_constructor(zdim::Int, ks, ncs, strd, datasize; layer_depth
     ddim_d = map(i->floor(Int,prod(sout_d[i])*ncs_out_f[i]), 1:length(ncs))
     
     # latent extractor
-    g = Tuple([Chain(x->reshape(x, :, size(x,4)), Dense(ddim_e[i], zdim*2)) for i in 1:nl])
+    f = Tuple([Chain(x->reshape(x, :, size(x,4)), Dense(ddim_e[i], zdim*2)) for i in 1:nl])
     
     # latent reshaper
-    f = Tuple([Chain(Dense(zdim, ddim_d[i], af), 
+    g = T,uple([Chain(Dense(zdim, ddim_d[i], af), 
             x->reshape(x, sout_d[i]..., ncs_out_f[i], size(x,2))) for i in 1:nl])
 
-    return e, d, g, f
+    return e, d, f, g
 end
 
 function ae_constructor(indim, strd, ks, rks, ncs_in_e, ncs_out_e, ncs_in_d, ncs_out_d, af, 

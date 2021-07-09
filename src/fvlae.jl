@@ -1,18 +1,32 @@
-struct FVLAE{E,D,C,G,F,XD,ZD,V,XDIST<:Val} <: AbstractVLAE
+struct FVLAE{E,D,C,F,G,XD,ZD,V,XDIST<:Val} <: AbstractVLAE
     e::E
     d::D
     c::C # critic
-    g::G # extracts latent variables
-    f::F # concatenates latent vars with the rest
+    f::F # extracts latent variables
+    g::G # concatenates latent vars with the rest
     xdim::XD # (h,w,c)
     zdim::ZD # scalar
     var::V # dense or conv last layer (ignore for dense fvlae)
     xdist::XDIST # gaussian or bernoulli
 end
-FVLAE(e,d,c,g,f,xdim,zdim,var,xdist::Symbol=:gaussian) = 
-	FVLAE(e,d,c,g,f,xdim,zdim,var,Val(xdist))
+FVLAE(e,d,c,f,g,xdim,zdim,var,xdist::Symbol=:gaussian) = 
+	FVLAE(e,d,c,f,g,xdim,zdim,var,Val(xdist))
 Flux.@functor FVLAE
 (m::FVLAE)(x) = reconstruct(m, x)
+
+function Base.show(io::IO, m::FVLAE)
+    msg = """$(nameof(typeof(m))):
+        encoder = 
+            e - $(repr(m.e))
+            f - $(repr(m.f))
+        decoder = 
+            d - $(repr(m.d))
+            g - $(repr(m.g))
+        critic = 
+            $(repr(m.c))
+    """
+    print(io, msg)
+end
 
 """
 	FVLAE(zdim::Int, hdim::Int, ks, ncs, stride, datasize; discriminator_nlayers::Int=3, 
@@ -29,39 +43,39 @@ function FVLAE(zdim::Int, hdim::Int, ks, ncs, strd, datasize; discriminator_nlay
 		error("xdist must be either :gaussian or :bernoulli")
 
 	# get encoder, decoder and latent extractors and reshapers
-	e,d,g,f = basic_model_constructor(zdim, ks, ncs, strd, datasize; var=var, xdist=xdist, 
+	e,d,f,g = basic_model_constructor(zdim, ks, ncs, strd, datasize; var=var, xdist=xdist, 
 		kwargs...)
 
 	# now construct the critic (discriminator)
 	c = discriminator_constructor(zdim*length(ks), hdim, discriminator_nlayers; kwargs...)
 
-    return FVLAE(e,d,c,g,f,datasize[1:3],zdim,var,xdist)
+    return FVLAE(e,d,c,f,g,datasize[1:3],zdim,var,xdist)
 end
 function FVLAE(zdim::Int, hdims, d_hdim::Int, datasize; discriminator_nlayers::Int=2, kwargs...)
     # get encoder, decoder and latent extractors and reshapers
-    e,d,g,f = basic_model_constructor(zdim, hdims, datasize[1]; kwargs...)
+    e,d,f,g = basic_model_constructor(zdim, hdims, datasize[1]; kwargs...)
 
 	# now construct the critic (discriminator)
 	c = HierarchicalAD.discriminator_constructor(zdim*length(hdims), d_hdim, 
 		discriminator_nlayers; kwargs...)
 
-    return HierarchicalAD.FVLAE(e,d,c,g,f,(datasize[1],),zdim,nothing,:gaussian)
+    return HierarchicalAD.FVLAE(e,d,c,f,g,(datasize[1],),zdim,nothing,:gaussian)
 end
 
-function logpdf(m::FVLAE{E,D,C,G,F,X,Z,V,XD}, x::AbstractArray{T,2}, zs...) where 
-		{E,D,C,G,F,X,Z,V,XD<:Val{:gaussian}} where T
+function logpdf(m::FVLAE{E,D,C,F,G,X,Z,V,XD}, x::AbstractArray{T,2}, zs...) where 
+		{E,D,C,F,G,X,Z,V,XD<:Val{:gaussian}} where T
     μx, σx = _decoded_mu_var(m, zs...)
     _x = (m.var == :dense) ? vectorize(x) : x      
     return  gauss_logpdf(_x, μx, σx)
 end
-function logpdf(m::FVLAE{E,D,C,G,F,X,Z,V,XD}, x::AbstractArray{T,4}, zs...) where 
-	{E,D,C,G,F,X,Z,V,XD<:Val{:gaussian}} where T
+function logpdf(m::FVLAE{E,D,C,F,G,X,Z,V,XD}, x::AbstractArray{T,4}, zs...) where 
+	{E,D,C,F,G,X,Z,V,XD<:Val{:gaussian}} where T
     μx, σx = _decoded_mu_var1(m, zs...)
     _x = (m.var == :dense) ? vectorize(x) : x      
     return  gauss_logpdf(_x, μx, σx)
 end
-function logpdf(m::FVLAE{E,D,C,G,F,X,Z,V,XD}, x::AbstractArray{T,4}, zs...) where 
-	{E,D,C,G,F,X,Z,V,XD<:Val{:bernoulli}} where T
+function logpdf(m::FVLAE{E,D,C,F,G,X,Z,V,XD}, x::AbstractArray{T,4}, zs...) where 
+	{E,D,C,F,G,X,Z,V,XD<:Val{:bernoulli}} where T
     _x = _decoder_out(m, zs...)
     return  bernoulli_logpdf(_x, x)
 end
@@ -268,7 +282,7 @@ function train_fvlae(zdim, hdims, batchsize, d_hdim, nepochs, tr_x::AbstractArra
 	val_x::AbstractArray{T,2}; λ=0.0f0, γ=1.0f0, epochsize = size(tr_x,2), 
 	layer_depth=1, lr=0.001f0, activation="relu", discriminator_nlayers=3,
 	initial_convergence_threshold=0f0, initial_convergence_epochs=10,
-    max_retrain_tries=10) where T
+    max_retrain_tries=10, kwargs....) where T
 
     # this is to ensure that the model converges to something meaningful
 	hist, rdata, model, zs, aeopt, copt = nothing, nothing, nothing, nothing, nothing, nothing
