@@ -25,5 +25,8 @@ end
 sample_tensor(x::AbstractArray{T,4}, n::Int; kwargs...) where T = x[:,:,:,sample(1:size(x,4), n; kwargs...)]
 sample_tensor(x::AbstractArray{T,2}, n::Int; kwargs...) where T = x[:,sample(1:size(x,2), n; kwargs...)]
 
-batched_loss(lf, x, batchsize) = 
-    Flux.mean(map(y->cpu(lf(y)), Flux.Data.DataLoader(x, batchsize=batchsize)))
+function batched_loss(lf, x, batchsize)
+    @suppress begin # suppress the batchsize warning
+       return Flux.mean(map(y->cpu(lf(y)), Flux.Data.DataLoader(x, batchsize=batchsize)))
+    end
+end

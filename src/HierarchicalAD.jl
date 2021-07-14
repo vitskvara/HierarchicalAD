@@ -23,6 +23,7 @@ using NearestNeighbors
 using LinearAlgebra
 using Statistics
 using EvalMetrics
+using Suppressor
 
 include("digits.jl")
 include("abstract_vlae.jl")

@@ -69,7 +69,17 @@ end
 encode(m::AbstractVLAE, x) = encode(m, x, length(m.f))
 encode_all(m::AbstractVLAE, x) = Tuple(map(y->rptrick(y...), _encoded_mu_vars(m, x)))
 function encode_all(m::AbstractVLAE, x, batchsize::Int)
-    encs = map(y->cpu(encode_all(gpu(m), gpu(y))), Flux.Data.DataLoader(x, batchsize=batchsize))
+    local encs
+    @suppress begin
+        encs = map(y->cpu(encode_all(gpu(m), gpu(y))), Flux.Data.DataLoader(x, batchsize=batchsize))
+    end
+    [cat([y[i] for y in encs]..., dims=2) for i in 1:length(encs[1])]
+end
+function encode_all(m::AbstractVLAE, x::AbstractArray{T,2}, batchsize::Int) where T
+    local encs
+    @suppress begin
+        encs = map(y->cpu(encode_all(m, y)), Flux.Data.DataLoader(x, batchsize=batchsize))
+    end
     [cat([y[i] for y in encs]..., dims=2) for i in 1:length(encs[1])]
 end
 

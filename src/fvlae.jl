@@ -207,7 +207,10 @@ function train!(model::FVLAE, nepochs, batchsize, tr_x::AbstractArray{T,4},
     initial_convergence_epochs=10) where T
 	# data an initial reconstruction loss	
 	gval_x = gpu(val_x[:,:,:,1:min(1000, size(val_x,4))]);
-	data_itr = Flux.Data.DataLoader(sample_tensor(tr_x, epochsize), batchsize=batchsize)
+	local data_itr
+	@suppress begin # suppress the batchsize warning
+		data_itr = Flux.Data.DataLoader(sample_tensor(tr_x, epochsize), batchsize=batchsize)
+	end
     init_rloss = batched_loss(x->reconstruction_loss(model,x), gval_x, batchsize)
 
     # params
@@ -282,7 +285,7 @@ function train_fvlae(zdim, hdims, batchsize, d_hdim, nepochs, tr_x::AbstractArra
 	val_x::AbstractArray{T,2}; λ=0.0f0, γ=1.0f0, epochsize = size(tr_x,2), 
 	layer_depth=1, lr=0.001f0, activation="relu", discriminator_nlayers=3,
 	initial_convergence_threshold=0f0, initial_convergence_epochs=10,
-    max_retrain_tries=10, kwargs....) where T
+    max_retrain_tries=10, kwargs...) where T
 
     # this is to ensure that the model converges to something meaningful
 	hist, rdata, model, zs, aeopt, copt = nothing, nothing, nothing, nothing, nothing, nothing
@@ -331,7 +334,10 @@ function train!(model::FVLAE, nepochs, batchsize, tr_x::AbstractArray{T,2},
 	
 	# data an initial reconstruction loss	
 	subval_x = val_x[:,1:min(1000, size(val_x,2))]
-	data_itr = Flux.Data.DataLoader(sample_tensor(tr_x, epochsize), batchsize=batchsize)
+	local data_itr
+	@suppress begin # suppress the batchsize warning
+		data_itr = Flux.Data.DataLoader(sample_tensor(tr_x, epochsize), batchsize=batchsize)
+    end
     init_rloss = batched_loss(x->reconstruction_loss(model,x), subval_x, batchsize)
 
     # params
