@@ -30,3 +30,35 @@ function batched_loss(lf, x, batchsize)
        return Flux.mean(map(y->cpu(lf(y)), Flux.Data.DataLoader(x, batchsize=batchsize)))
     end
 end
+
+"""
+    restart_weights!(model, init = Flux.glorot_uniform) 
+
+Restarts the weights of the model using given initialization method.
+"""
+function restart_weights!(model, init = Flux.glorot_uniform) 
+    ps = params(model)
+    for p in ps
+        p .= init(size(p)...)
+    end
+    model
+end
+
+"""
+    normalization_coefficients(x::Matrix)
+
+Row-wise normalization coefficients.
+"""
+normalization_coefficients(x::AbstractArray{T,2}) where T = maximum(x, dims=2), minimum(x, dims=2)
+
+"""
+    normalize(x::Matrix[, maxs, mins])
+
+Row-wise normalization of x. If maxima/minima are not supported, they are returned as well.
+"""
+normalize(x::AbstractArray{T,2}, maxs, mins) where T = (x .- mins) ./ (maxs - mins)
+function normalize(x::AbstractArray{T,2}) where T
+    maxs, mins = normalization_coeffs(x)
+    return normalize(x, maxs, mins), maxs, mins
+end
+sqnorm(x) = sum(abs2, x)

@@ -136,7 +136,7 @@ permute_mat(x::AbstractArray{T,2}) where T = permute_rows(x)
 Flux.Zygote.@nograd permute_mat_rows, permute_mat_cols, permute_mat, permute_rows
 
 function factor_closs(m, x)
-	zs = encode_all(m, x)
+	zs = _encode_all(m, x; mean=false)
 	zps = map(zs) do z
 		zp = permute_mat(z)
 		zp

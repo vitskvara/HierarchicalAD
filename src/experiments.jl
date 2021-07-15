@@ -86,33 +86,6 @@ function load_mnist(type="")
 	end
 end
 
-
-"""
-    train_val_test_inds(indices, ratios=(0.6,0.2,0.2); seed=nothing)
-
-Split indices.
-"""
-function train_val_test_inds(indices, ratios=(0.6,0.2,0.2); seed=nothing)
-    (sum(ratios) ≈ 1 && length(ratios) == 3) ? nothing :
-    	error("ratios must be a vector of length 3 that sums up to 1")
-
-    # set seed
-    (seed == nothing) ? nothing : Random.seed!(seed)
-
-    # set number of samples in individual subsets
-    n = length(indices)
-    ns = cumsum([x for x in floor.(Int, n .* ratios)])
-
-    # scramble indices
-    _indices = sample(indices, n, replace=false)
-
-    # restart seed
-    (seed == nothing) ? nothing : Random.seed!()
-
-    # return the sets of indices
-    _indices[1:ns[1]], _indices[ns[1]+1:ns[2]], _indices[ns[2]+1:ns[3]]
-end
-
 """
 	load_train_val_test_data(dataset, filter_dict=Dict(); ratios=(0.6,0.2,0.2), seed=nothing,
         categorical_key=nothing)

@@ -62,27 +62,55 @@ end
 _cat_arrays(h1::AbstractArray{T,4}, h2::AbstractArray{T,4}) where T = cat(h1, h2, dims=3)
 _cat_arrays(h1::AbstractArray{T,2}, h2::AbstractArray{T,2}) where T = cat(h1, h2, dims=1)
 
-function encode(m::AbstractVLAE, x, i::Int)
+# encoding functions
+function _batched_encs(f, m, x, batchsize, args...; kwargs...)
+    local encs
+    @suppress begin
+        encs = map(y->cpu(f(gpu(m), gpu(y), args...; kwargs...)), 
+            Flux.Data.DataLoader(x, batchsize=batchsize))
+    end
+    [cat([y[i] for y in encs]..., dims=2) for i in 1:length(encs[1])]
+end
+function _batched_encs(f, m, x::AbstractArray{T,2}, batchsize, args...; kwargs...) where T
+    local encs
+    @suppress begin
+        encs = map(y->cpu(f(m, y, args...; kwargs...)), 
+            Flux.Data.DataLoader(x, batchsize=batchsize))
+    end
+    [cat([y[i] for y in encs]..., dims=2) for i in 1:length(encs[1])]
+end
+function _encode_ith(m::AbstractVLAE, x, i::Int; mean=false)
     μzs_σzs = _encoded_mu_vars(m, x)
-    rptrick(μzs_σzs[i]...)
-end
-encode(m::AbstractVLAE, x) = encode(m, x, length(m.f))
-encode_all(m::AbstractVLAE, x) = Tuple(map(y->rptrick(y...), _encoded_mu_vars(m, x)))
-function encode_all(m::AbstractVLAE, x, batchsize::Int)
-    local encs
-    @suppress begin
-        encs = map(y->cpu(encode_all(gpu(m), gpu(y))), Flux.Data.DataLoader(x, batchsize=batchsize))
+    if mean
+        return [μzs_σzs[i][1]]
+    else 
+        return [rptrick(μzs_σzs[i]...)]
     end
-    [cat([y[i] for y in encs]..., dims=2) for i in 1:length(encs[1])]
 end
-function encode_all(m::AbstractVLAE, x::AbstractArray{T,2}, batchsize::Int) where T
-    local encs
-    @suppress begin
-        encs = map(y->cpu(encode_all(m, y)), Flux.Data.DataLoader(x, batchsize=batchsize))
+_encode_ith_batched(m::AbstractVLAE, x, i::Int; mean=false, batchsize=128) = 
+    _batched_encs(_encode_ith, m, x, batchsize, i; mean=mean)[1]
+function _encode_all(m::AbstractVLAE, x; mean=false)
+    if mean
+        return Tuple(map(y->y[1], _encoded_mu_vars(m, x)))
+    else
+        return Tuple(map(y->rptrick(y...), _encoded_mu_vars(m, x)))
     end
-    [cat([y[i] for y in encs]..., dims=2) for i in 1:length(encs[1])]
 end
 
+"""
+    encode(m::AbstractVLAE, x, [i::Int]; mean=false, batchsize=128)
+
+Encoding in the i-th latent layer. If i is not given, all encodings are returned instead. 
+"""
+encode(m::AbstractVLAE, x, i::Int; batchsize::Int=128, mean=false) = 
+    _encode_ith_batched(m , x, i; batchsize=batchsize, mean=mean)
+encode(m::AbstractVLAE, x; batchsize::Int=128, mean=false) =
+    _batched_encs(_encode_all, m, x, batchsize; mean=mean)
+encode_mean(args...; kwargs...) = encode(args...; mean=true, kwargs...)
+encode_all(m::AbstractVLAE, x; kwargs...) =
+     encode(m, x; kwargs...)
+
+# decoding functions
 function decode(m::AbstractVLAE, zs...)
     # this is for 2D data
     if length(m.xdim) == 1

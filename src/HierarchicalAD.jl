@@ -26,16 +26,18 @@ using EvalMetrics
 using Suppressor
 
 include("digits.jl")
-include("abstract_vlae.jl")
-include("vlae.jl")
-include("fvlae.jl")
 include("model_utils.jl")
 include("training_utils.jl")
 include("experiments.jl")
 include("shapes2d.jl")
 include("data.jl")
-include("knn.jl")
 include("evaluation.jl")
+
+include("knn.jl")
+include("abstract_vlae.jl")
+include("vlae.jl")
+include("fvlae.jl")
+include("had.jl")
 
 export VLAE, FVLAE, AbstractVLAE
 
