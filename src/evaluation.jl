@@ -1,0 +1,1 @@
+auc_val(labels, scores) = auc_trapezoidal(roccurve(labels, scores)...)
