@@ -284,7 +284,7 @@ Train a factored dense VLAE.
 function train_fvlae(zdim, hdims, batchsize, d_hdim, nepochs, tr_x::AbstractArray{T,2}, 
 	val_x::AbstractArray{T,2}; λ=0.0f0, γ=1.0f0, epochsize = size(tr_x,2), 
 	layer_depth=1, lr=0.001f0, activation="relu", discriminator_nlayers=3,
-	initial_convergence_threshold=0f0, initial_convergence_epochs=10,
+	initial_convergence_threshold=0f0, initial_convergence_epochs=nepochs+1,
     max_retrain_tries=10, verb=true, kwargs...) where T
 
     # this is to ensure that the model converges to something meaningful
