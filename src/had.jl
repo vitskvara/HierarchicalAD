@@ -136,7 +136,7 @@ HAD(nl::Int, ap, ac, dp, dc, cp, c) = HAD(
         TrainingParameters(Dict(ap), Dict(dp), Dict(cp)),
         TrainingOutputs()
         )
-HAD(nl::Int, ap, ac, dp, dc, cp) = HAD(nl, ap, ac, dp, cp, dc, Dense(nl+1, 2))
+HAD(nl::Int, ap, ac, dp, dc, cp) = HAD(nl, ap, ac, dp, dc, cp, Dense(nl+1, 2))
 
 # fvlae parameters
 """
