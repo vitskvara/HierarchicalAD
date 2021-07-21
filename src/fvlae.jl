@@ -285,7 +285,7 @@ function train_fvlae(zdim, hdims, batchsize, d_hdim, nepochs, tr_x::AbstractArra
 	val_x::AbstractArray{T,2}; λ=0.0f0, γ=1.0f0, epochsize = size(tr_x,2), 
 	layer_depth=1, lr=0.001f0, activation="relu", discriminator_nlayers=3,
 	initial_convergence_threshold=0f0, initial_convergence_epochs=10,
-    max_retrain_tries=10, kwargs...) where T
+    max_retrain_tries=10, verb=true, kwargs...) where T
 
     # this is to ensure that the model converges to something meaningful
 	hist, rdata, model, zs, aeopt, copt = nothing, nothing, nothing, nothing, nothing, nothing
@@ -308,7 +308,8 @@ function train_fvlae(zdim, hdims, batchsize, d_hdim, nepochs, tr_x::AbstractArra
         hist, rdata, zs = train!(model, nepochs, batchsize, tr_x, val_x, aeopt, copt; 
             λ=λ, γ=γ, epochsize = epochsize, 
             initial_convergence_threshold=initial_convergence_threshold,
-            initial_convergence_epochs=initial_convergence_epochs)
+            initial_convergence_epochs=initial_convergence_epochs,
+            verb=verb)
         ntries += 1
     end
     
@@ -330,9 +331,10 @@ end
 function train!(model::FVLAE, nepochs, batchsize, tr_x::AbstractArray{T,2}, 
 	val_x::AbstractArray{T,2}, aeopt, copt; 
 	λ=0.0f0, γ=1.0f0, epochsize = size(tr_x,2), initial_convergence_threshold=0f0,
-    initial_convergence_epochs=50) where T
+    initial_convergence_epochs=50, verb=true) where T
 	
 	# data an initial reconstruction loss	
+	subtr_x = tr_x[:,1:min(1000, size(tr_x,2))]
 	subval_x = val_x[:,1:min(1000, size(val_x,2))]
 	local data_itr
 	@suppress begin # suppress the batchsize warning
@@ -354,7 +356,9 @@ function train!(model::FVLAE, nepochs, batchsize, tr_x::AbstractArray{T,2},
     nl = length(model.e)
     zs = [[] for _ in 1:nl]
     
-	println("Training in progress...")
+    if verb
+		println("Training in progress...")
+	end
 	for epoch in 1:nepochs
 		for x in data_itr
 			# first update the autoencoder
@@ -375,13 +379,15 @@ function train!(model::FVLAE, nepochs, batchsize, tr_x::AbstractArray{T,2},
 
 		# logging
 		Flux.Zygote.ignore() do 
-			ael=round(batched_loss(aeloss, subval_x, batchsize), digits=2)
+			ael=round(batched_loss(aeloss, subval_x, batchsize), digits=4)
 			cl=round(batched_loss(closs, subval_x, batchsize), digits=4)
-			rl=round(batched_loss(x->reconstruction_loss(model, x), subval_x, batchsize), digits=2)
+			rl=round(batched_loss(x->reconstruction_loss(model, x), subval_x, batchsize), digits=4)
 			kldl=round(batched_loss(x->kld_loss(model, x), subval_x, batchsize), digits=2)
 			tcl=round(batched_loss(x->tc_loss(model, x), subval_x, batchsize), digits=4)
 			
-			println("Epoch $(epoch)/$(nepochs), validation loss: AE=$ael | C=$cl | R=$rl | KLD=$kldl | TC=$tcl")
+			if verb
+				println("Epoch $(epoch)/$(nepochs), validation loss: AE=$ael | C=$cl | R=$rl | KLD=$kldl | TC=$tcl")
+			end
 			for i in 1:nl
 				z = encode(model, subval_x, i)
 				push!(zs[i], z)

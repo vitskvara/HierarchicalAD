@@ -178,7 +178,12 @@ function fit_autoencoder!(model::HAD, tr_x::AbstractArray, val_x::AbstractArray)
         val_x;
         model.parameters.autoencoder...
     )
-    
+    println("Training values at the end of training:")
+	for key in keys(hist)
+	    v = get(hist, key)[2][end]
+	    println("    $key = $v")
+	end
+
     # now assign the right fields
     @info "Autoencoder training finished. \n#############################\n"
     model.autoencoder = ae
