@@ -138,7 +138,7 @@ HAD(nl::Int, ap, ac, dp, dc, cp, c) = HAD(
         )
 HAD(nl::Int, ap, ac, dp, dc, cp) = HAD(nl, ap, ac, dp, dc, cp, Dense(nl+1, 2))
 
-# fvlae parameters
+# dense fvlae parameters
 """
 zdim, 
 hdims, 
@@ -152,6 +152,10 @@ max_retrain_tries=10
 """
 fvlae_constructor(;zdim::Int=1, hdims=(1,), discriminator_hdim=1, datasize=(1,1), kwargs...) =
     FVLAE(zdim, hdims, discriminator_hdim, datasize; kwargs...)
+
+# conv fvlae parameters
+fvlae_constructor(;zdim::Int=1, hdim=1, ks=[(1,1)], ncs=[1], strd=1, datasize=(1,1,1,1), kwargs...) = 
+    FVLAE(zdim, hdim, ks, ncs, strd, datasize; kwargs...)
 
 # knn parameters
 """

@@ -138,7 +138,7 @@ filter_dict, non_default_filters = HierarchicalAD.get_filter_info(experiment_arg
 dataset = "morpho_mnist"
 ratios = (0.8,0.199,0.001)
 if test 
-    data = HierarchicalAD.load_mnist("train")
+    data, labels = HierarchicalAD.load_mnist("train")
     tr_x = HierarchicalAD.sample_tensor(data, 1000)
     val_x = HierarchicalAD.sample_tensor(data, 1000)
     tst_x = HierarchicalAD.sample_tensor(data, 100)

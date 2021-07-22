@@ -148,7 +148,7 @@ function basic_model_constructor(zdim::Int, ks, ncs, strd, datasize; layer_depth
     f = Tuple([Chain(x->reshape(x, :, size(x,4)), Dense(ddim_e[i], zdim*2)) for i in 1:nl])
     
     # latent reshaper
-    g = T,uple([Chain(Dense(zdim, ddim_d[i], af), 
+    g = Tuple([Chain(Dense(zdim, ddim_d[i], af), 
             x->reshape(x, sout_d[i]..., ncs_out_f[i], size(x,2))) for i in 1:nl])
 
     return e, d, f, g

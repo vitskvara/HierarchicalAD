@@ -161,7 +161,7 @@ function train_fvlae(zdim, hdim, batchsize, ks, ncs, strd, nepochs, tr_x::Abstra
 	layer_depth=1, lr=0.001f0, var=:dense, 
 	activation="relu", discriminator_nlayers=3, xdist=:gaussian, pad=0,
 	initial_convergence_threshold=0f0, initial_convergence_epochs=10,
-    max_retrain_tries=10) where T
+    max_retrain_tries=10, kwargs...) where T
     # this is to ensure that the model converges to something meaningful
 	hist, rdata, model, zs, aeopt, copt = nothing, nothing, nothing, nothing, nothing, nothing
     
@@ -204,7 +204,7 @@ end
 function train!(model::FVLAE, nepochs, batchsize, tr_x::AbstractArray{T,4}, 
 	val_x::AbstractArray{T,4}, aeopt, copt; 
 	λ=0.0f0, γ=1.0f0, epochsize = size(tr_x,4), initial_convergence_threshold=0f0,
-    initial_convergence_epochs=10) where T
+    initial_convergence_epochs=10, kwargs...) where T
 	# data an initial reconstruction loss	
 	gval_x = gpu(val_x[:,:,:,1:min(1000, size(val_x,4))]);
 	local data_itr

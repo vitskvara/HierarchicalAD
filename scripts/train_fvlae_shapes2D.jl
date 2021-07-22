@@ -147,7 +147,7 @@ if test
     val_x = HierarchicalAD.sample_tensor(data, 1000)
     tst_x = HierarchicalAD.sample_tensor(data, 100)
     a_x = HierarchicalAD.sample_tensor(data, 1000)
-    tr_y, val_y, tst_y, a_y = nothing, nothing, nothing
+    tr_y, val_y, tst_y, a_y = nothing, nothing, nothing, nothing
 else
     (tr_x, tr_y), (val_x, val_y), (tst_x, tst_y), (a_x, a_y) = 
         HierarchicalAD.load_train_val_test_data(dataset, filter_dict; ratios=ratios, seed=seed,
