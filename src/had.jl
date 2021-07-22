@@ -154,7 +154,7 @@ fvlae_constructor(;zdim::Int=1, hdims=(1,), discriminator_hdim=1, datasize=(1,1)
     FVLAE(zdim, hdims, discriminator_hdim, datasize; kwargs...)
 
 # conv fvlae parameters
-fvlae_constructor(;zdim::Int=1, hdim=1, ks=[(1,1)], ncs=[1], strd=1, datasize=(1,1,1,1), kwargs...) = 
+conv_fvlae_constructor(;zdim::Int=1, hdim=1, ks=[(1,1)], ncs=[1], strd=1, datasize=(1,1,1,1), kwargs...) = 
     FVLAE(zdim, hdim, ks, ncs, strd, datasize; kwargs...)
 
 # knn parameters
