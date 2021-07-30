@@ -172,14 +172,32 @@ function fit_autoencoder!(model::HAD, tr_x::AbstractArray, val_x::AbstractArray)
     @info "############################# \nStarting autoencoder training"
     
     # train fvlae
+    local args
+    if haskey(model.parameters.autoencoder, :hdim) # conv fvlae
+        args = (
+            model.parameters.autoencoder[:zdim],
+            model.parameters.autoencoder[:hdim],
+            model.parameters.autoencoder[:batchsize],
+            model.parameters.autoencoder[:ks],
+            model.parameters.autoencoder[:ncs],
+            model.parameters.autoencoder[:strd],
+            model.parameters.autoencoder[:nepochs],
+            tr_x,
+            val_x
+            )
+    else
+        args = (
+            model.parameters.autoencoder[:zdim],
+            model.parameters.autoencoder[:hdims],
+            model.parameters.autoencoder[:batchsize],
+            model.parameters.autoencoder[:discriminator_hdim],
+            model.parameters.autoencoder[:nepochs],
+            tr_x,
+            val_x
+            )
+    end
     ae, hist, rdata, zs, aeopt, copt = train_fvlae(
-        model.parameters.autoencoder[:zdim],
-        model.parameters.autoencoder[:hdims],
-        model.parameters.autoencoder[:batchsize],
-        model.parameters.autoencoder[:discriminator_hdim],
-        model.parameters.autoencoder[:nepochs],
-        tr_x,
-        val_x;
+        args...;
         model.parameters.autoencoder...
     )
     println("Training values at the end of training:")

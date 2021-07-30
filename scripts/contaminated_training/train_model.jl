@@ -4,6 +4,7 @@ using ArgParse
 using CSV, DataFrames
 using HierarchicalAD
 using Flux, CUDA
+using HierarchicalAD: HAD, conv_fvlae_constructor, knn_constructor, fit!, fit_autoencoder!
 
 arg_table = ArgParseSettings()
 @add_arg_table arg_table begin
@@ -119,11 +120,16 @@ arg_table = ArgParseSettings()
         arg_type = String
         nargs = 2
         default = [">=", "0"]
+    "--k"
+        help = "k in kNN detector"
+        arg_type = Int
+        default = 1
+
 end
 args = parse_args(arg_table)
 @unpack latent_dim, hdim, channels, kernelsizes, stride, layer_depth, last_conv, seed, test,
     lambda, batchsize, nepochs, gpu_id, epochsize, savepath, lr, activation, gamma, xdist,
-    pad, discriminator_nlayers = args
+    pad, discriminator_nlayers, k = args
 latent_count = length(channels)
 (latent_count <= length(kernelsizes)) ? nothing : error("number of kernels and channels does not match.")
 out_var = last_conv ? :conv : :dense
@@ -150,7 +156,7 @@ args["test"] = test = true
 # get filters
 experiment_argnames = ["latent_dim", "hdim", "channels", "kernelsizes", "stride", "layer_depth", "last_conv", 
     "seed", "lambda", "batchsize", "nepochs", "gpu_id", "epochsize", "savepath", "lr", 
-    "activation", "gamma", "xdist", "test", "pad", "discriminator_nlayers"]
+    "activation", "gamma", "xdist", "test", "pad", "discriminator_nlayers", "k"]
 filter_dict, non_default_filters = HierarchicalAD.get_filter_info(experiment_argnames, args, arg_table)
 
 # get the data
@@ -174,8 +180,25 @@ end
 
 # now train the model
 # this probably needs some rewriting
-ncs = channels
 ks = [(k,k) for k in kernelsizes][1:latent_count]
+autoencoder_parameters = (zdim=latent_dim, hdim=hdim, ks=ks, ncs=channels, strd=stride, datasize=size(tr_x),
+    nepochs=nepochs, λ=lambda, γ=gamma, epochsize=epochsize, layer_depth=layer_depth, lr=lr, pad=pad,
+    var=out_var, activation=activation, xdist=xdist, discriminator_nlayers=discriminator_nlayers,
+    batchsize=batchsize
+    )
+detector_parameters = (k=k, v=:kappa)
+classifier_parameters = (λ=lambda, batchsize=batchsize, nepochs=200, val_ratio=0.2)    
+model = HAD(
+    latent_count,
+    autoencoder_parameters,
+    conv_fvlae_constructor,
+    detector_parameters,
+    knn_constructor,
+    classifier_parameters
+    )
+
+fit_autoencoder!(model, tr_x, val_x)
+
 
 
 
@@ -199,7 +222,7 @@ Flux.Zygote.ignore() do
     # now save everything
     model_id = HierarchicalAD.timetag()
     experiment_args = (model_id=model_id, data=dataset, latent_count=latent_count, 
-        latent_dim=latent_dim, channels=ncs, kernelsizes=ks, stride=stride, layer_depth=layer_depth, 
+        latent_dim=latent_dim, channels=channels, kernelsizes=ks, stride=stride, layer_depth=layer_depth, 
         last_conv=last_conv, lr=lr, activation=activation, seed=seed, lambda=lambda, 
         batchsize=batchsize, nepochs=nepochs, gpu_id=gpu_id, epochsize=epochsize, gamma=gamma, 
         hdim=hdim, xdist=xdist, test=test, pad=pad, discriminator_nlayers=discriminator_nlayers)
