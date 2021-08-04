@@ -159,6 +159,37 @@ experiment_argnames = ["latent_dim", "hdim", "channels", "kernelsizes", "stride"
     "activation", "gamma", "xdist", "test", "pad", "discriminator_nlayers", "k"]
 filter_dict, non_default_filters = HierarchicalAD.get_filter_info(experiment_argnames, args, arg_table)
 
+normal_data_args = Dict(
+    "shape" => [1], 
+    "orientation" => [">=", "0"],
+    "normalized_orientation" => [">=", "0.5"],
+    "scale" => [">=", "0.75"],
+    "posY" => [">=", "0.5"],
+    "posX" => [">=", "0.5"]
+    )
+normal_data_fd, normal_data_ndfs = HierarchicalAD.get_filter_info(experiment_argnames, normal_data_args, arg_table)
+
+all_data_args = Dict(
+    "shape" => [1,2,3],
+    "orientation" => [">=", "0"],
+    "normalized_orientation" => [">=", "0"],
+    "scale" => [">=", "0.5"],    
+    "posY" => [">=", "0.5"],
+    "posX" => [">=", "0.5"]
+    )
+all_data_fd, all_data_ndfs = HierarchicalAD.get_filter_info(experiment_argnames, all_data_args, arg_table)
+
+dataset = "shapes2D"
+ratios = (0.8, 0.1, 0.1)
+(ntr_x, ntr_y), (nval_x, nval_y), (ntst_x, ntst_y), (na_x, na_y) = 
+    HierarchicalAD.load_train_val_test_data(dataset, normal_data_fd; ratios=ratios, seed=seed,
+        categorical_key="shape")
+(atr_x, atr_y), (aval_x, aval_y), (atst_x, atst_y), (aa_x, aa_y) = 
+    HierarchicalAD.load_train_val_test_data(dataset, all_data_fd; ratios=ratios, seed=seed,
+        categorical_key="shape")
+
+
+
 # get the data
 dataset = "shapes2D"
 ratios = (0.8,0.199,0.001)
@@ -200,7 +231,13 @@ model = HAD(
 # train the autoencoder on all the data
 fit_autoencoder!(model, tr_x, val_x)
 
+
+
+
+
+
 # then train the knn only on normal data
+
 
 gval_x = gpu(val_x[:,:,:,1:min(10, size(val_x,4))]);
 HierarchicalAD.reconstruction_loss(model.autoencoder, gval_x)
