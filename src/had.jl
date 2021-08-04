@@ -227,6 +227,19 @@ function fit_detectors!(model::HAD, tr_x::AbstractArray)
     # now assign the right fields
     @info "Detector training finished. \n#############################\n"
 end
+function fit_detectors!(model::HAD, tr_x::AbstractArray{T,4}) where T
+    @info "############################# \nStarting detector training"
+    
+    # encode the data
+    tr_e = cpu(encode_all(model.autoencoder, tr_x; batchsize=model.parameters.autoencoder[:batchsize], mean=true))
+    
+    # fit the detectors
+    map(x->fit!(x[1], x[2]), zip(model.detectors, tr_e))
+    
+    # now assign the right fields
+    @info "Detector training finished. \n#############################\n"
+end
+
 
 """
 	train_classifier!(classifier, tr_x, tr_y, val_x, val_y; 
