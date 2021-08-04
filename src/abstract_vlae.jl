@@ -66,7 +66,7 @@ _cat_arrays(h1::AbstractArray{T,2}, h2::AbstractArray{T,2}) where T = cat(h1, h2
 function _batched_encs(f, m, x, batchsize, args...; kwargs...)
     local encs
     @suppress begin
-        encs = map(y->cpu(f(gpu(m), gpu(y), args...; kwargs...)), 
+        encs = map(y->f(gpu(m), gpu(y), args...; kwargs...), 
             Flux.Data.DataLoader(x, batchsize=batchsize))
     end
     [cat([y[i] for y in encs]..., dims=2) for i in 1:length(encs[1])]

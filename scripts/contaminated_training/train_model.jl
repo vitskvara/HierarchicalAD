@@ -202,8 +202,10 @@ fit_autoencoder!(model, tr_x, val_x)
 
 # then train the knn only on normal data
 
-
-
+gval_x = gpu(val_x[:,:,:,1:min(10, size(val_x,4))]);
+HierarchicalAD.reconstruction_loss(model.autoencoder, gval_x)
+zs = HierarchicalAD.encode_all(model.autoencoder, gval_x)
+_x = _decoder_out(model.autoencoder, zs...)
 
 model, training_history, reconstructions, latent_representations = 
     HierarchicalAD.train_fvlae(latent_dim, hdim, batchsize, ks, ncs, stride, nepochs, tr_x, 
