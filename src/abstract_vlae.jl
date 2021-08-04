@@ -132,7 +132,7 @@ function reconstruction_probability(m::AbstractVLAE, x::AbstractArray{T,2}) wher
     zs = map(y->rptrick(y...), _encoded_mu_vars(m, x))
     return -logpdf(m, x, zs...)
 end
-function reconstruction_probability(m::AbstractVLAE, x::AbstractArray{T,4}) where T = 
+function reconstruction_probability(m::AbstractVLAE, x::AbstractArray{T,4}) where T 
     gx = gpu(x)
     zs = map(y->rptrick(y...), _encoded_mu_vars(m, gx))
     return -logpdf(m, gx, zs...)
