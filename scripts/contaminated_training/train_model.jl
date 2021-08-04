@@ -197,8 +197,10 @@ model = HAD(
     classifier_parameters
     )
 
+# train the autoencoder on all the data
 fit_autoencoder!(model, tr_x, val_x)
 
+# then train the knn only on normal data
 
 
 
