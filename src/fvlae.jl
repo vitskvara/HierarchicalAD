@@ -240,7 +240,7 @@ function train!(model::FVLAE, nepochs, batchsize, tr_x::AbstractArray{T,4},
 		 # sometimes the model is stuck in some local minima and cant get out - better restart the training
         if epoch == initial_convergence_epochs
             rloss = batched_loss(x->reconstruction_loss(model, x), gval_x, batchsize)
-            if (init_rloss - rloss)/init_rloss < initial_convergence_threshold
+            if abs((init_rloss - rloss)/init_rloss) < initial_convergence_threshold
                 @info "Initial improvement after $(initial_convergence_epochs) epochs is $(init_rloss) => $rloss, model probably stuck in local minima, terminating training. Try restarting the model."
                 return nothing, nothing, nothing
             end
@@ -371,7 +371,7 @@ function train!(model::FVLAE, nepochs, batchsize, tr_x::AbstractArray{T,2},
 		 # sometimes the model is stuck in some local minima and cant get out - better restart the training
         if epoch == initial_convergence_epochs
             rloss = batched_loss(x->reconstruction_loss(model, x), subval_x, batchsize)
-            if (init_rloss - rloss)/init_rloss < initial_convergence_threshold
+            if abs((init_rloss - rloss)/init_rloss) < initial_convergence_threshold
                 @info "Initial improvement after $(initial_convergence_epochs) epochs is $(init_rloss) => $rloss, model probably stuck in local minima, terminating training. Try restarting the model."
                 return nothing, nothing, nothing
             end
