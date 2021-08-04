@@ -132,8 +132,11 @@ function reconstruction_probability(m::AbstractVLAE, x::AbstractArray{T,2}) wher
     zs = map(y->rptrick(y...), _encoded_mu_vars(m, x))
     return -logpdf(m, x, zs...)
 end
-reconstruction_probability(m::AbstractVLAE, x::AbstractArray{T,4}) where T = 
-    reconstruction_probability(m, gpu(x))
+function reconstruction_probability(m::AbstractVLAE, x::AbstractArray{T,4}) where T = 
+    gx = gpu(x)
+    zs = map(y->rptrick(y...), _encoded_mu_vars(m, gx))
+    return -logpdf(m, gx, zs...)
+end
 reconstruction_probability(m::AbstractVLAE, x, L::Int) = mean([reconstruction_probability(m,x) for _ in 1:L])
 function reconstruction_probability(m::AbstractVLAE, x, L::Int, batchsize::Int)
     vcat(map(b->cpu(reconstruction_probability(m, b, L)), Flux.Data.DataLoader(x, batchsize=batchsize))...)
