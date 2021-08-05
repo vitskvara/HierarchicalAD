@@ -24,6 +24,10 @@ arg_table = ArgParseSettings()
         arg_type = String
         default = "test"
         help = "subdir of data/models"
+    "--discriminator_nlayers"
+        arg_type = Int
+        default = 3
+        help = "number of discriminator layers"
     "--kernelsizes"
         arg_type = Int
         nargs = '*'
@@ -70,6 +74,10 @@ arg_table = ArgParseSettings()
     "--last_conv"
         action = :store_true
         help = "should the last layer of decoder be a dense or a conv layer"
+    "--pad"
+        arg_type = Int
+        default = 0
+        help = "padding"
     "--lr"
         help = "learning rate"
         arg_type = Float32
@@ -81,45 +89,41 @@ arg_table = ArgParseSettings()
     "--epochsize"
         help = "number of samples used in each epoch"
         default = nothing
-    "--digit"
-        help = "which digits to include"
+    "--shape"
+        help = "there are 3 shapes"
         arg_type = Int
         nargs = '*'
-        default = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
-    "--area"
-        help = "define the included area which is a number in [0,350] with mean of ~100, e.g. `--area >= 150`"
+        default = [1, 2, 3]
+    "--scale"
+        help = "scale is in the range [0.5, 1.0]"
+        arg_type = String
+        nargs = 2
+        default = [">=", "0.5"]
+   "--orientation"
+        help = "an angle in the range [0, 360]"
         arg_type = String
         nargs = 2
         default = [">=", "0"]
-   "--length"
-        help = "define the included digit length which is a number in [0,100] with mean of ~40"
+   "--normalized_orientation"
+        help = "an angle in the range [0, 1]"
         arg_type = String
         nargs = 2
         default = [">=", "0"]
-   "--thickness"
-        help = "define the included thickness which is a number in [0,10] with mean of ~3"
+   "--posX"
+        help = "x position in the range [0,1]"
         arg_type = String
         nargs = 2
         default = [">=", "0"]
-   "--slant"
-        help = "define the included slant which is a number in [-1,1] with mean of ~0.1"
-        arg_type = String
-        nargs = 2
-        default = [">=", "-1"]
-   "--width"
-        help = "define the included width which is a number in [0,25] with mean of ~14"
-        arg_type = String
-        nargs = 2
-        default = [">=", "0"]
-   "--height"
-        help = "define the included height which is a number in [0,21] with mean of ~19.5"
+   "--posY"
+        help = "y position in the range [0,1]"
         arg_type = String
         nargs = 2
         default = [">=", "0"]
 end
 args = parse_args(arg_table)
 @unpack latent_dim, hdim, channels, kernelsizes, stride, layer_depth, last_conv, seed, test,
-    lambda, batchsize, nepochs, gpu_id, epochsize, savepath, lr, activation, gamma, xdist = args
+    lambda, batchsize, nepochs, gpu_id, epochsize, savepath, lr, activation, gamma, xdist,
+    pad, discriminator_nlayers = args
 latent_count = length(channels)
 (latent_count <= length(kernelsizes)) ? nothing : error("number of kernels and channels does not match.")
 out_var = last_conv ? :conv : :dense
@@ -131,23 +135,23 @@ CUDA.device!(gpu_id)
 # get filters
 experiment_argnames = ["latent_dim", "hdim", "channels", "kernelsizes", "stride", "layer_depth", "last_conv", 
     "seed", "lambda", "batchsize", "nepochs", "gpu_id", "epochsize", "savepath", "lr", 
-    "activation", "gamma", "xdist", "test"]
+    "activation", "gamma", "xdist", "test", "pad", "discriminator_nlayers"]
 filter_dict, non_default_filters = HierarchicalAD.get_filter_info(experiment_argnames, args, arg_table)
 
 # get the data
-dataset = "morpho_mnist"
+dataset = "shapes2D"
 ratios = (0.8,0.199,0.001)
 if test 
-    data, labels = HierarchicalAD.load_mnist("train")
+    data = HierarchicalAD.load_shapes2D()
     tr_x = HierarchicalAD.sample_tensor(data, 1000)
     val_x = HierarchicalAD.sample_tensor(data, 1000)
     tst_x = HierarchicalAD.sample_tensor(data, 100)
-    tr_y, val_y, tst_y = nothing, nothing, nothing
-    a_x, a_y = HierarchicalAD.sample_tensor(HierarchicalAD.load_mnist("test"), 1000), nothing
+    a_x = HierarchicalAD.sample_tensor(data, 1000)
+    tr_y, val_y, tst_y, a_y = nothing, nothing, nothing, nothing
 else
     (tr_x, tr_y), (val_x, val_y), (tst_x, tst_y), (a_x, a_y) = 
         HierarchicalAD.load_train_val_test_data(dataset, filter_dict; ratios=ratios, seed=seed,
-            categorical_key="digit")
+            categorical_key="shape")
 end
 if epochsize == nothing
     epochsize = size(tr_x, 4)
@@ -159,7 +163,8 @@ ks = [(k,k) for k in kernelsizes][1:latent_count]
 model, training_history, reconstructions, latent_representations = 
     HierarchicalAD.train_fvlae(latent_dim, hdim, batchsize, ks, ncs, stride, nepochs, tr_x, 
         val_x; λ=lambda, γ=gamma, epochsize=epochsize, layer_depth=layer_depth, lr=lr, 
-        var=out_var, activation=activation, xdist=xdist)
+        var=out_var, activation=activation, xdist=xdist, pad=pad, 
+        discriminator_nlayers=discriminator_nlayers)
 
 Flux.Zygote.ignore() do
     # now save everything
@@ -168,7 +173,7 @@ Flux.Zygote.ignore() do
         latent_dim=latent_dim, channels=ncs, kernelsizes=ks, stride=stride, layer_depth=layer_depth, 
         last_conv=last_conv, lr=lr, activation=activation, seed=seed, lambda=lambda, 
         batchsize=batchsize, nepochs=nepochs, gpu_id=gpu_id, epochsize=epochsize, gamma=gamma, 
-        hdim=hdim, xdist=xdist, test=test)
+        hdim=hdim, xdist=xdist, test=test, pad=pad, discriminator_nlayers=discriminator_nlayers)
     save_args = (model_id=model_id, data=dataset, model="fvlae", latent_dim=latent_dim,
         channels=channels,gamma=gamma, lambda=lambda, activation=activation, xdist=xdist)
     svn = HierarchicalAD.safe_savename(save_args, "bson", digits=5)
