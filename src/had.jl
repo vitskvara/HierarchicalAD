@@ -304,8 +304,7 @@ function fit_classifier!(model::HAD, val_x::AbstractArray, val_y::Vector)
     
     # create and scale inputs
     vr = model.parameters.classifier[:val_ratio]
-    _, (_tr_x, _tr_y), (_val_x, _val_y) = train_val_test_split(val_x[:,val_y.==0], val_x[:,val_y.==1],
-        (0, 1-vr, vr))
+    _, (_tr_x, _tr_y), (_val_x, _val_y) = _split_data(val_x, val_y, vr)
     cl_tr_x, cl_tr_y = classifier_inputs(model, _tr_x, _tr_y)
     cl_val_x, cl_val_y = classifier_inputs(model, _val_x, _val_y)
     norm_coeffs = normalization_coefficients(hcat(cl_tr_x, cl_val_x))
@@ -336,6 +335,10 @@ function fit_classifier!(model::HAD, val_x::AbstractArray, val_y::Vector)
     
     @info "Classifier training finished. \n#############################\n"
 end
+_split_data(x::AbstractArray{T,2}, y, vr) where T =
+    train_val_test_split(x[:,y.==0], x[:,y.==1],(0, 1-vr, vr))
+_split_data(x::AbstractArray{T,4}, y, vr) where T =
+    train_val_test_split(x[:,:,:,y.==0], x[:,:,:,y.==1],(0, 1-vr, vr))
 
 """
 	StatsBase.fit!(model::HAD, tr_x::AbstractArray, val_x::AbstractArray)
