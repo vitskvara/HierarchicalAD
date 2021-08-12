@@ -27,6 +27,7 @@ using Suppressor
 
 include("digits.jl")
 include("model_utils.jl")
+include("disentanglement.jl")
 include("training_utils.jl")
 include("experiments.jl")
 include("shapes2d.jl")

@@ -111,41 +111,48 @@ kld_loss(m, x) =
 tc_loss(m, x) = 
 	total_correlation(m.c, cat(encode_all(m, x)...,dims=1))
 
-function permutation_mat_cols(x::AbstractArray{T,2}) where T # permutation per latent
-	m,n = size(x)
-	perm_mat = fill!(similar(x, n, n), 0)
+function init_perm_mat(x::AbstractArray{T,2}) where T
+    n = size(x,2)
+    fill!(similar(x, n, n), 0), n
+end
+function init_perm_mat(x::SubArray)
+    n = size(x,1)
+    fill!(similar(x.parent, n, n), 0), n
+end
+function permutation_mat(x)
+	perm_mat, n = init_perm_mat(x)
 	for (j,i) in zip(1:n, sample(1:n, n, replace=false))
 		perm_mat[j,i] = 1
 	end
 	perm_mat
 end
-function permutation_mat_rows(x::AbstractArray{T,2}) where T 
-	m,n = size(x)
-	perm_mat = fill!(similar(x, m, m), 0)
-	for (j,i) in zip(1:m, sample(1:m, m, replace=false))
-		perm_mat[j,i] = 1
-	end
-	perm_mat
-end
-function permute_rows(x::AbstractArray{T,2}) where T # permutation per latent dim
-    vcat(map(i->HierarchicalAD.permute_mat_cols(x[i:i,:]), 1:size(x,1))...)
-end
-permute_mat_rows(x::AbstractArray{T,2}) where T = permutation_mat_rows(x)*x
-permute_mat_cols(x::AbstractArray{T,2}) where T = x*permutation_mat_cols(x)
-permute_mat(x::AbstractArray{T,2}) where T = permute_rows(x)  
-Flux.Zygote.@nograd permute_mat_rows, permute_mat_cols, permute_mat, permute_rows
+# permutation for individual latents
+permute_cols(x) where T = x*permutation_mat(x)
+# permutation for inidivdual dims
+permute_rows(x::AbstractArray{T,2}) where T = 
+    vcat(map(x->reshape(permutation_mat(x)*x,1,size(x,1)), eachrow(x))...) 
+Flux.Zygote.@nograd permutation_mat # or less?
 
-function factor_closs(m, x)
+function factor_closs_per_dim(m, x)
 	zs = _encode_all(m, x; mean=false)
 	zps = map(zs) do z
-		zp = permute_mat(z)
+		zp = permute_rows(z)
 		zp
 	end
 	_zs = cat(zs..., dims=1)
 	_zps = cat(zps..., dims=1)
 	dloss(m.c, _zs, _zps)
 end
-
+function factor_closs_per_latent(m, x)
+	zs = _encode_all(m, x; mean=false)
+	zps = map(zs) do z
+		zp = permute_cols(z)
+		zp
+	end
+	_zs = cat(zs..., dims=1)
+	_zps = cat(zps..., dims=1)
+	dloss(m.c, _zs, _zps)
+end
 
 #### THIS IS FOR IMAGE DATA ####
 """
@@ -157,7 +164,9 @@ end
 Train a factored VLAE.
 """
 function train_fvlae(zdim, hdim, batchsize, ks, ncs, strd, nepochs, tr_x::AbstractArray{T,4}, 
-	val_x::AbstractArray{T,4}; λ=0.0f0, γ=1.0f0, epochsize = size(tr_x,4), 
+	val_x::AbstractArray{T,4}; tr_y=nothing, val_y=nothing, factors=nothing,
+	disentangle_per_latent=true,
+	λ=0.0f0, γ=1.0f0, epochsize = size(tr_x,4), 
 	layer_depth=1, lr=0.001f0, var=:dense, 
 	activation="relu", discriminator_nlayers=3, xdist=:gaussian, pad=0,
 	initial_convergence_threshold=0f0, initial_convergence_epochs=10,
@@ -180,6 +189,8 @@ function train_fvlae(zdim, hdim, batchsize, ks, ncs, strd, nepochs, tr_x::Abstra
     
         # train it
         hist, rdata, zs = train!(model, nepochs, batchsize, tr_x, val_x, aeopt, copt; 
+        	tr_y=tr_y, val_y=val_y, factors=factors, 
+        	disentangle_per_latent=disentangle_per_latent,
             λ=λ, γ=γ, epochsize = epochsize, 
             initial_convergence_threshold=initial_convergence_threshold,
             initial_convergence_epochs=initial_convergence_epochs)
@@ -198,13 +209,20 @@ end
 """
 	train!(model::FVLAE, nepochs, batchsize, tr_x::AbstractArray{T,4}, 
 		val_x::AbstractArray{T,4}, aeopt, copt; 
+		tr_y=nothing, val_y=nothing, factors=nothing, disentangle_per_latent=true,
 		λ=0.0f0, γ=1.0f0, epochsize = size(tr_x,4), initial_convergence_threshold=0f0,
-	    initial_convergence_epochs=10)
+    	initial_convergence_epochs=10)
 """
 function train!(model::FVLAE, nepochs, batchsize, tr_x::AbstractArray{T,4}, 
 	val_x::AbstractArray{T,4}, aeopt, copt; 
+	tr_y=nothing, val_y=nothing, factors=nothing, disentangle_per_latent=true,
+	disentanglement_repeats::Int=1,
 	λ=0.0f0, γ=1.0f0, epochsize = size(tr_x,4), initial_convergence_threshold=0f0,
     initial_convergence_epochs=10, kwargs...) where T
+	if !isnothing(tr_y) && !(isnothing(val_y)) && isnothing(factors)
+		error("specify factors you want to disentangle")
+	end
+
 	# data an initial reconstruction loss	
 	gval_x = gpu(val_x[:,:,:,1:min(1000, size(val_x,4))]);
 	local data_itr
@@ -214,12 +232,14 @@ function train!(model::FVLAE, nepochs, batchsize, tr_x::AbstractArray{T,4},
     init_rloss = batched_loss(x->reconstruction_loss(model,x), gval_x, batchsize)
 
     # params
+    # this is according to their code right
     aeps = Flux.params(model.e, model.d, model.f, model.g)
     cps = Flux.params(model.c)
     
     # losses
     aeloss(x) = factor_aeloss(model, gpu(x), γ) + λ*sum(l2, aeps)
-    closs(x) = factor_closs(model, gpu(x))
+    closs(x) = disentangle_per_latent ? 
+    	factor_closs_per_latent(model, gpu(x)) : factor_closs_per_dim(model, gpu(x))
 
     # rest of the setup
     rdata = []
@@ -247,24 +267,39 @@ function train!(model::FVLAE, nepochs, batchsize, tr_x::AbstractArray{T,4},
         end
 
 		# logging
-		Flux.Zygote.ignore() do 
+		Flux.Zygote.ignore() do
+			# compute loss values
 			ael=round(batched_loss(aeloss, gval_x, batchsize), digits=2)
 			cl=round(batched_loss(closs, gval_x, batchsize), digits=4)
 			rl=round(batched_loss(x->reconstruction_loss(model, x), gval_x, batchsize), digits=2)
 			kldl=round(batched_loss(x->kld_loss(model, x), gval_x, batchsize), digits=2)
 			tcl=round(batched_loss(x->tc_loss(model, x), gval_x, batchsize), digits=4)
+
+			# also, compute the disentanglement metric
+			zs_all = cpu(encode_all(model, cat(tr_x, val_x, dims=4)))
+			y = (isnothing(tr_y) || isnothing(val_y)) ? nothing : vcat(tr_y, val_y)
+			dml = disentanglement_per_latent(zs_all, y, factors, disentanglement_repeats; 
+				max_samples=size(zs[1],2))
+			dmd = disentanglement_per_dim(vcat(zs_all...), y, factors, disentanglement_repeats; 
+				max_samples=size(zs[1],2))
+
+			println("Epoch $(epoch)/$(nepochs), validation loss: AE=$ael | C=$cl | R=$rl | KLD=$kldl | TC=$tcl | DL=$dml | DD=$dmd")
 			
-			println("Epoch $(epoch)/$(nepochs), validation loss: AE=$ael | C=$cl | R=$rl | KLD=$kldl | TC=$tcl")
-			for i in 1:nl
-				z = encode(model, gval_x, i)
-				push!(zs[i], cpu(z))
-			end
 			push!(hist, :autoencoder_loss, epoch, ael)
 			push!(hist, :critic_loss, epoch, cl)
 			push!(hist, :reconstruction_loss, epoch, rl)
 			push!(hist, :kld, epoch, kldl)
 			push!(hist, :total_correlation, epoch, tcl)
+			push!(hist, :disentanglemen_per_latent, epoch, dml)
+			push!(hist, :disentanglemen_per_dim, epoch, dmd)
 			push!(rdata, cpu(reconstruct(model, gval_x)))
+
+			# 
+			for i in 1:nl
+				z = encode(model, gval_x, i)
+				push!(zs[i], cpu(z))
+			end
+
 		end
 	end
 	

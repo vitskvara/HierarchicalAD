@@ -5,7 +5,7 @@ using CSV, DataFrames
 using HierarchicalAD
 using Flux, CUDA
 
-arg_table = ArgParseSettings()
+arg_table = ArgParseSettings(;autofix_names=true)
 @add_arg_table arg_table begin
     "latent_dim"
         arg_type = Int
@@ -20,6 +20,9 @@ arg_table = ArgParseSettings()
         nargs = '*'
         default = [16, 32, 64]
         help = "channel sizes"
+    "--disentangle-per-latent"
+        action = :store_true
+        help = "disentangle representations per latent space instead of per latent dim"
     "--savepath"
         arg_type = String
         default = "test"
@@ -88,7 +91,8 @@ arg_table = ArgParseSettings()
         default = 0
     "--epochsize"
         help = "number of samples used in each epoch"
-        default = nothing
+        default = 500000
+        arg_type = Int
     "--shape"
         help = "there are 3 shapes"
         arg_type = Int
@@ -123,7 +127,7 @@ end
 args = parse_args(arg_table)
 @unpack latent_dim, hdim, channels, kernelsizes, stride, layer_depth, last_conv, seed, test,
     lambda, batchsize, nepochs, gpu_id, epochsize, savepath, lr, activation, gamma, xdist,
-    pad, discriminator_nlayers = args
+    pad, discriminator_nlayers, disentangle_per_latent = args
 latent_count = length(channels)
 (latent_count <= length(kernelsizes)) ? nothing : error("number of kernels and channels does not match.")
 out_var = last_conv ? :conv : :dense
@@ -135,7 +139,7 @@ CUDA.device!(gpu_id)
 # get filters
 experiment_argnames = ["latent_dim", "hdim", "channels", "kernelsizes", "stride", "layer_depth", "last_conv", 
     "seed", "lambda", "batchsize", "nepochs", "gpu_id", "epochsize", "savepath", "lr", 
-    "activation", "gamma", "xdist", "test", "pad", "discriminator_nlayers"]
+    "activation", "gamma", "xdist", "test", "pad", "discriminator_nlayers", "disentangle_per_latent"]
 filter_dict, non_default_filters = HierarchicalAD.get_filter_info(experiment_argnames, args, arg_table)
 
 # get the data
@@ -160,21 +164,24 @@ end
 # now train the model
 ncs = channels
 ks = [(k,k) for k in kernelsizes][1:latent_count]
+factors = [:shape, :scale, :posX, :posY, :normalized_orientation]
 model, training_history, reconstructions, latent_representations = 
     HierarchicalAD.train_fvlae(latent_dim, hdim, batchsize, ks, ncs, stride, nepochs, tr_x, 
-        val_x; λ=lambda, γ=gamma, epochsize=epochsize, layer_depth=layer_depth, lr=lr, 
+        val_x;  tr_y=tr_y, val_y=val_y, factors=factors, 
+        disentangle_per_latent = disentangle_per_latent,
+        λ=lambda, γ=gamma, epochsize=epochsize, 
+        layer_depth=layer_depth, lr=lr, 
         var=out_var, activation=activation, xdist=xdist, pad=pad, 
         discriminator_nlayers=discriminator_nlayers)
 
 Flux.Zygote.ignore() do
     # compute scores
-    tr_scores, val_scores, tst_scores, a_scores = 
-        map(x->HierarchicalAD.reconstruction_probability(gpu(model), x, 5, 16), (tr_x, val_x, tst_x, a_x))
+    #tr_scores, val_scores, tst_scores, a_scores = 
+    #    map(x->HierarchicalAD.reconstruction_probability(gpu(model), x, 5, 16), (tr_x, val_x, tst_x, a_x))
 
     # compute encodings
-    tr_encodings, val_encodings, tst_encodings, a_encodings = 
-        map(x->HierarchicalAD.encode_all(model,x,batchsize),(tr_x, val_x, tst_x, a_x))
-
+    #tr_encodings, val_encodings, tst_encodings, a_encodings = 
+    #    map(x->HierarchicalAD.encode_all(model,x,batchsize),(tr_x, val_x, tst_x, a_x))
 
     # now save everything
     model_id = HierarchicalAD.timetag()
@@ -182,7 +189,8 @@ Flux.Zygote.ignore() do
         latent_dim=latent_dim, channels=ncs, kernelsizes=ks, stride=stride, layer_depth=layer_depth, 
         last_conv=last_conv, lr=lr, activation=activation, seed=seed, lambda=lambda, 
         batchsize=batchsize, nepochs=nepochs, gpu_id=gpu_id, epochsize=epochsize, gamma=gamma, 
-        hdim=hdim, xdist=xdist, test=test, pad=pad, discriminator_nlayers=discriminator_nlayers)
+        hdim=hdim, xdist=xdist, test=test, pad=pad, discriminator_nlayers=discriminator_nlayers,
+        disentangle_per_latent=disentangle_per_latent, factors=factors)
     save_args = (model_id=model_id, data=dataset, model="fvlae", latent_dim=latent_dim,
         channels=channels,gamma=gamma, lambda=lambda, activation=activation, xdist=xdist)
     svn = HierarchicalAD.safe_savename(save_args, "bson", digits=5)
@@ -195,14 +203,14 @@ Flux.Zygote.ignore() do
             :reconstructions => reconstructions,
             :latent_representations => latent_representations,
             :ratios => ratios,
-            :tr_scores => tr_scores,
-            :val_scores => val_scores,
-            :tst_scores => tst_scores,
-            :a_scores => a_scores,
-            :tr_encodings => tr_encodings, 
-            :val_encodings => val_encodings, 
-            :tst_encodings => tst_encodings, 
-            :a_encodings => a_encodings,
+            #:tr_scores => tr_scores,
+            #:val_scores => val_scores,
+            #:tst_scores => tst_scores,
+            #:a_scores => a_scores,
+            #:tr_encodings => tr_encodings, 
+            #:val_encodings => val_encodings, 
+            #:tst_encodings => tst_encodings, 
+            #:a_encodings => a_encodings,
             :tr_labels => tr_y,
             :val_labels => val_y,
             :tst_labels => tst_y,
