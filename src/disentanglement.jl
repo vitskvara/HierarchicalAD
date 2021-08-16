@@ -31,6 +31,12 @@ function split_pairs(all_pairs, train_ratio=0.5; seed=nothing)
     (tr_x, tr_y), (tst_x, tst_y)
 end
 
+function precision_using_mvc(tr_x, tr_y, tst_x, tst_y)
+    mvc = MajorityVoteClassifier(tr_x, tr_y);
+    y_pred = predict(mvc, tst_x)
+    precision(y_pred, tst_y)
+end
+
 # this is for disentanglement per dim
 function get_least_varied_dim(x::AbstractArray{T,2}, sds) where T
     x = x ./ sds
@@ -38,32 +44,46 @@ function get_least_varied_dim(x::AbstractArray{T,2}, sds) where T
     argmin(v)[1], v
 end
 
-function disentanglement_per_dim(z::AbstractArray{T,2}, y, factors; max_samples=size(z,2)) where T
-    # first compute sd per dimension
+function least_varied_dim_pairs(z::AbstractArray{T,2}, y, factors; 
+	samples_per_factor=100, batchsize=2000) where T
+	# first compute sd per dimension
     sds = map(std, eachrow(z))
     
     # now loop over factors and latents
     all_pairs = []
+    vars = []
     for k in 1:length(factors)
         factor = factors[k]
         fvals = unique(y[!,factor])
 
         k_pairs = []
-        for fk in fvals
-            zk = z[:,y[!,factor] .== fk]
+        for i in 1:samples_per_factor
+            fk = sample(fvals)
+            zk = sample_tensor(z[:,y[!,factor] .== fk], batchsize)
             ik, vs = get_least_varied_dim(zk, sds)
             push!(k_pairs, (ik, k))
+            push!(vars, vs)
         end
         push!(all_pairs, k_pairs)
     end
     # now this contains the pairs with (x=least varied latent index, y=factor index)
     all_pairs = vcat(all_pairs...)
-    
+    all_pairs, vars
+end
+   
+"""
+	 disentanglement_per_dim(
+	 	z::AbstractArray{T,2}, y, factors; 
+        samples_per_factor=100, batchsize=2000
+        )
+"""
+function disentanglement_per_dim(z::AbstractArray{T,2}, y, factors; kwargs...) where T
+    # get the training pairs
+    all_pairs, vars = least_varied_dim_pairs(z, y, factors; kwargs...)
+
     # here, train and predict using majority voting classifier
-    (tr_x, tr_y), (tst_x, tst_y) = split_pairs(all_pairs, 0.5)
-    mvc = MajorityVoteClassifier(tr_x, tr_y);
-    y_pred = predict(mvc, tst_x)
-    precision(y_pred, tst_y)
+	(tr_x, tr_y), (tst_x, tst_y) = split_pairs(all_pairs, 0.5)
+	precision_using_mvc(tr_x, tr_y, tst_x, tst_y)
 end
 disentanglement_per_dim(z::AbstractArray{T,2}, y, factors, M::Int; kwargs...) where T = 
 	mean(map(_->disentanglement_per_dim(z, y, factors; kwargs...), 1:M))
@@ -80,35 +100,45 @@ function get_least_varied_latent(zs::Vector, sds_per_latent) where T
     argmin(dcovs)[1], dcovs
 end
 
-function disentanglement_per_latent(zs::Vector, y, factors; max_samples=size(zs[1],2))
-    # first compute sd per dimension
+function least_varied_latent_pairs(zs::Vector, y, factors; samples_per_factor=100, batchsize=2000)
+	# first compute sd per dimension
     sds_per_latent = map(z->map(std, eachrow(z)),zs)
     
     # now loop over factors and latents
     all_pairs = []
+    covs = []
     for k in 1:length(factors)
         factor = factors[k]
         fvals = unique(y[!,factor])
 
         k_pairs = []
-        for fk in fvals
+        for i in 1:samples_per_factor
+        	fk = sample(fvals)
             zks = []
             for latenti in 1:length(zs)
-                push!(zks, zs[latenti][:,y[!,factor] .== fk])
+                push!(zks, sample_tensor(zs[latenti][:,y[!,factor] .== fk], batchsize))
             end
             ik, dcovs = get_least_varied_latent(zks, sds_per_latent)
             push!(k_pairs, (ik, k))
+            push!(covs, dcovs)
         end
         push!(all_pairs, k_pairs)
     end
     # now this contains the pairs with (x=least varied latent index, y=factor index)
     all_pairs = vcat(all_pairs...)
+    all_pairs, covs
+end
     
+"""
+	disentanglement_per_latent(zs::Vector, y, factors; samples_per_factor=100, batchsize=2000)
+"""
+function disentanglement_per_latent(zs::Vector, y, factors; kwargs...)
+    # get the training pairs
+    all_pairs, covs = least_varied_latent_pairs(zs, y, factors; kwargs...)
+
     # here, train and predict using majority voting classifier
     (tr_x, tr_y), (tst_x, tst_y) = split_pairs(all_pairs, 0.5)
-    mvc = MajorityVoteClassifier(tr_x, tr_y);
-    y_pred = predict(mvc, tst_x)
-    precision(y_pred, tst_y)
+    precision_using_mvc(tr_x, tr_y, tst_x, tst_y)
 end
 disentanglement_per_latent(zs::Vector, y, factors, M::Int; kwargs...) = 
 	mean(map(_->disentanglement_per_latent(zs, y, factors; kwargs...), 1:M))

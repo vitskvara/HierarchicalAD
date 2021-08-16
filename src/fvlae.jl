@@ -290,8 +290,8 @@ function train!(model::FVLAE, nepochs, batchsize, tr_x::AbstractArray{T,4},
 			push!(hist, :reconstruction_loss, epoch, rl)
 			push!(hist, :kld, epoch, kldl)
 			push!(hist, :total_correlation, epoch, tcl)
-			push!(hist, :disentanglemen_per_latent, epoch, dml)
-			push!(hist, :disentanglemen_per_dim, epoch, dmd)
+			push!(hist, :disentanglement_per_latent, epoch, dml)
+			push!(hist, :disentanglement_per_dim, epoch, dmd)
 			push!(rdata, cpu(reconstruct(model, gval_x)))
 
 			# 
