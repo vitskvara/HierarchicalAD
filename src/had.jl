@@ -297,16 +297,23 @@ function train_classifier!(classifier, tr_x, tr_y, val_x, val_y;
 end
 
 """
-	fit_classifier!(model::HAD, val_x::AbstractArray, val_y::Vector; n_candidates = 10)
+	fit_classifier!(model::HAD, x::AbstractArray, y::Vector)
 """
-function fit_classifier!(model::HAD, val_x::AbstractArray, val_y::Vector)
+function fit_classifier!(model::HAD, x::AbstractArray, y::Vector)
+    # split data
+    vr = model.parameters.classifier[:val_ratio]
+    _, (tr_x, tr_y), (val_x, val_y) = _split_data(x, y, vr)
+    fit_classifier!(model, tr_x, tr_y, val_x, val_y)
+end
+"""
+    fit_classifier!(model::HAD, tr_x::AbstractArray, tr_y::Vector, val_x::AbstractArray, val_y::Vector)
+"""
+function fit_classifier!(model::HAD, tr_x::AbstractArray, tr_y::Vector, val_x::AbstractArray, val_y::Vector)
     @info "############################# \nStarting classifier training"
     
     # create and scale inputs
-    vr = model.parameters.classifier[:val_ratio]
-    _, (_tr_x, _tr_y), (_val_x, _val_y) = _split_data(val_x, val_y, vr)
-    cl_tr_x, cl_tr_y = classifier_inputs(model, _tr_x, _tr_y)
-    cl_val_x, cl_val_y = classifier_inputs(model, _val_x, _val_y)
+    cl_tr_x, cl_tr_y = classifier_inputs(model, tr_x, tr_y)
+    cl_val_x, cl_val_y = classifier_inputs(model, val_x, val_y)
     norm_coeffs = normalization_coefficients(hcat(cl_tr_x, cl_val_x))
     cl_tr_x = normalize(cl_tr_x, norm_coeffs...)
     cl_val_x = normalize(cl_val_x, norm_coeffs...)
@@ -364,7 +371,7 @@ end
 Scores of the ensemble of detectors.
 """
 function ensemble_scores(detectors, x)
-    scores = map(_x->predict(_x[1], _x[2]), zip(detectors, x))
+    scores = map(_x->StatsBase.predict(_x[1], _x[2]), zip(detectors, x))
 end
 
 """
@@ -373,10 +380,10 @@ end
 Detector + AE rec. probability, L is number of samples in the computation of rec. probability.
 """
 function all_scores(model::HAD, x; L::Int=10)
-    rec_score = reconstruction_probability(model.autoencoder, x, 10)
+    rec_score = reconstruction_probability(model.autoencoder, x, L, model.parameters.autoencoder[:batchsize])
     detector_scores = ensemble_scores(
         model.detectors, 
-        encode_all(model.autoencoder, x; batchsize=model.parameters.autoencoder[:batchsize], mean=true)
+        cpu(encode_all(model.autoencoder, x; batchsize=model.parameters.autoencoder[:batchsize], mean=true))
         )
     cat(detector_scores, [rec_score], dims=1)
 end
@@ -399,3 +406,42 @@ end
 Extracts the probability that a sample is an anomaly.
 """
 classifier_score(c, x) = softmax(c(x))[2,:]
+classifier_score(c, x::AbstractArray{T,4}) where T = cpu(softmax(c(gpu(x)))[2,:])
+classifier_score(c, x, batchsize::Int) = 
+    vcat(map(b->cpu(_classifier_score(c, b)), Flux.Data.DataLoader(x, batchsize=batchsize))...)
+
+
+### extension of some methods
+reconstruct(model::HAD, x) = reconstruct(model.autoencoder, x)
+
+
+### some other stuff
+function autoencoder_params_outputs_from_fvlae_data(autoencoder_data, datasize)
+    autoencoder_parameters = (
+        zdim=autoencoder_data[:experiment_args].latent_dim, 
+        hdim=autoencoder_data[:experiment_args].hdim, 
+        ks=autoencoder_data[:experiment_args].kernelsizes, 
+        ncs=autoencoder_data[:experiment_args].channels, 
+        strd=autoencoder_data[:experiment_args].stride, 
+        datasize=datasize,
+        nepochs=autoencoder_data[:experiment_args].nepochs, 
+        λ=autoencoder_data[:experiment_args].lambda, 
+        γ=autoencoder_data[:experiment_args].gamma, 
+        epochsize=autoencoder_data[:experiment_args].epochsize, 
+        layer_depth=autoencoder_data[:experiment_args].layer_depth, 
+        lr=autoencoder_data[:experiment_args].lr, 
+        pad=autoencoder_data[:experiment_args].pad,
+        var= (autoencoder_data[:experiment_args].last_conv) ? :conv : :dense, 
+        activation=autoencoder_data[:experiment_args].activation, 
+        xdist=autoencoder_data[:experiment_args].xdist, 
+        discriminator_nlayers=autoencoder_data[:experiment_args].discriminator_nlayers,
+        batchsize=autoencoder_data[:experiment_args].batchsize
+        )
+    autoencoder_outputs = Dict(
+        :latents => autoencoder_data[:latent_representations],
+        :history => autoencoder_data[:training_history],
+        :reconstructions => autoencoder_data[:reconstructions]
+        )
+
+    autoencoder_parameters, autoencoder_outputs
+end

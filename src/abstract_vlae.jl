@@ -139,7 +139,11 @@ function reconstruction_probability(m::AbstractVLAE, x::AbstractArray{T,4}) wher
 end
 reconstruction_probability(m::AbstractVLAE, x, L::Int) = mean([reconstruction_probability(m,x) for _ in 1:L])
 function reconstruction_probability(m::AbstractVLAE, x, L::Int, batchsize::Int)
-    vcat(map(b->cpu(reconstruction_probability(m, b, L)), Flux.Data.DataLoader(x, batchsize=batchsize))...)
+    if size(x, ndims(x)) == 0
+        return Float32[]
+    else
+        return vcat(map(b->cpu(reconstruction_probability(m, b, L)), Flux.Data.DataLoader(x, batchsize=batchsize))...)
+    end
 end
 
 function generate(m::AbstractVLAE, n::Int)

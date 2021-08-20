@@ -169,7 +169,7 @@ function train_fvlae(zdim, hdim, batchsize, ks, ncs, strd, nepochs, tr_x::Abstra
 	λ=0.0f0, γ=1.0f0, epochsize = size(tr_x,4), 
 	layer_depth=1, lr=0.001f0, var=:dense, 
 	activation="relu", discriminator_nlayers=3, xdist=:gaussian, pad=0,
-	initial_convergence_threshold=0f0, initial_convergence_epochs=10,
+	convergence_threshold=0f0, initial_convergence_epochs=10,
     max_retrain_tries=10, kwargs...) where T
     # this is to ensure that the model converges to something meaningful
 	hist, rdata, model, zs, aeopt, copt = nothing, nothing, nothing, nothing, nothing, nothing
@@ -192,7 +192,7 @@ function train_fvlae(zdim, hdim, batchsize, ks, ncs, strd, nepochs, tr_x::Abstra
         	tr_y=tr_y, val_y=val_y, factors=factors, 
         	disentangle_per_latent=disentangle_per_latent,
             λ=λ, γ=γ, epochsize = epochsize, 
-            initial_convergence_threshold=initial_convergence_threshold,
+            convergence_threshold=convergence_threshold,
             initial_convergence_epochs=initial_convergence_epochs)
         ntries += 1
     end
@@ -210,14 +210,14 @@ end
 	train!(model::FVLAE, nepochs, batchsize, tr_x::AbstractArray{T,4}, 
 		val_x::AbstractArray{T,4}, aeopt, copt; 
 		tr_y=nothing, val_y=nothing, factors=nothing, disentangle_per_latent=true,
-		λ=0.0f0, γ=1.0f0, epochsize = size(tr_x,4), initial_convergence_threshold=0f0,
-    	initial_convergence_epochs=10)
+		λ=0.0f0, γ=1.0f0, epochsize = size(tr_x,4), convergence_threshold=0f0,
+    	initial_convergence_epochs=2)
 """
 function train!(model::FVLAE, nepochs, batchsize, tr_x::AbstractArray{T,4}, 
 	val_x::AbstractArray{T,4}, aeopt, copt; 
 	tr_y=nothing, val_y=nothing, factors=nothing, disentangle_per_latent=true,
 	disentanglement_repeats::Int=1,
-	λ=0.0f0, γ=1.0f0, epochsize = size(tr_x,4), initial_convergence_threshold=0f0,
+	λ=0.0f0, γ=1.0f0, epochsize = size(tr_x,4), convergence_threshold=0f0,
     initial_convergence_epochs=10, kwargs...) where T
 	if !isnothing(tr_y) && !(isnothing(val_y)) && isnothing(factors)
 		error("specify factors you want to disentangle")
@@ -230,6 +230,7 @@ function train!(model::FVLAE, nepochs, batchsize, tr_x::AbstractArray{T,4},
 		data_itr = Flux.Data.DataLoader(sample_tensor(tr_x, epochsize), batchsize=batchsize)
 	end
     init_rloss = batched_loss(x->reconstruction_loss(model,x), gval_x, batchsize)
+    control_rloss = init_rloss
 
     # params
     # this is according to their code right
@@ -258,10 +259,10 @@ function train!(model::FVLAE, nepochs, batchsize, tr_x::AbstractArray{T,4},
 		end
 
 		 # sometimes the model is stuck in some local minima and cant get out - better restart the training
-        if epoch == initial_convergence_epochs
-            rloss = batched_loss(x->reconstruction_loss(model, x), gval_x, batchsize)
-            if abs((init_rloss - rloss)/init_rloss) < initial_convergence_threshold
-                @info "Initial improvement after $(initial_convergence_epochs) epochs is $(init_rloss) => $rloss, model probably stuck in local minima, terminating training. Try restarting the model."
+        rloss = batched_loss(x->reconstruction_loss(model, x), gval_x, batchsize)
+        if epoch == initial_convergence_epochs    
+            if abs((init_rloss - rloss)/init_rloss) < convergence_threshold
+                @info "\nInitial improvement after $(initial_convergence_epochs) epochs is $(init_rloss) => $rloss, model probably stuck in local minima, terminating training. Try restarting the model."
                 return nothing, nothing, nothing
             end
         end
@@ -274,32 +275,50 @@ function train!(model::FVLAE, nepochs, batchsize, tr_x::AbstractArray{T,4},
 			rl=round(batched_loss(x->reconstruction_loss(model, x), gval_x, batchsize), digits=2)
 			kldl=round(batched_loss(x->kld_loss(model, x), gval_x, batchsize), digits=2)
 			tcl=round(batched_loss(x->tc_loss(model, x), gval_x, batchsize), digits=4)
+			println("Epoch $(epoch)/$(nepochs), validation loss: AE=$ael | C=$cl | R=$rl | KLD=$kldl | TC=$tcl")
 
-			# also, compute the disentanglement metric
-			zs_all = cpu(encode_all(model, cat(tr_x, val_x, dims=4)))
-			y = (isnothing(tr_y) || isnothing(val_y)) ? nothing : vcat(tr_y, val_y)
-			dml = disentanglement_per_latent(zs_all, y, factors, disentanglement_repeats; 
-				max_samples=size(zs[1],2))
-			dmd = disentanglement_per_dim(vcat(zs_all...), y, factors, disentanglement_repeats; 
-				max_samples=size(zs[1],2))
-
-			println("Epoch $(epoch)/$(nepochs), validation loss: AE=$ael | C=$cl | R=$rl | KLD=$kldl | TC=$tcl | DL=$dml | DD=$dmd")
-			
 			push!(hist, :autoencoder_loss, epoch, ael)
 			push!(hist, :critic_loss, epoch, cl)
 			push!(hist, :reconstruction_loss, epoch, rl)
 			push!(hist, :kld, epoch, kldl)
 			push!(hist, :total_correlation, epoch, tcl)
-			push!(hist, :disentanglement_per_latent, epoch, dml)
-			push!(hist, :disentanglement_per_dim, epoch, dmd)
 			push!(rdata, cpu(reconstruct(model, gval_x)))
 
+			# also, compute the disentanglement metric
+			dmls = []
+			dmds = []
+			if !isnothing(factors)
+				zs_all = cpu(encode_all(model, cat(tr_x, val_x, dims=4)))
+				y = (isnothing(tr_y) || isnothing(val_y)) ? nothing : vcat(tr_y, val_y)
+				# in case factors is just one vector
+				if typeof(factors[1]) == Symbol || length(factors[1]) == 1 
+					factors = [factors]
+				end
+				for factor_vec in factors
+					dml = disentanglement_per_latent(zs_all, y, factor_vec, disentanglement_repeats)
+					dmd = disentanglement_per_dim(vcat(zs_all...), y, factor_vec, disentanglement_repeats)
+					println("Disentanglement of $(factor_vec): $dml (per latent) | $dmd (per dim)")
+					push!(dmls, dml)
+					push!(dmds, dmd)
+				end
+				println("")
+			end
+			push!(hist, :disentanglement_per_latent, epoch, dmls)
+			push!(hist, :disentanglement_per_dim, epoch, dmds)
+				
 			# 
 			for i in 1:nl
 				z = encode(model, gval_x, i)
 				push!(zs[i], cpu(z))
 			end
+		end
 
+		# early stopping
+		if control_rloss < rloss
+			@info "Stoppping early after $epoch epochs due to no improvement."
+			return hist, rdata, zs
+		else
+			control_rloss = rloss
 		end
 	end
 	

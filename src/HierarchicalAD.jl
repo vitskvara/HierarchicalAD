@@ -39,6 +39,7 @@ include("abstract_vlae.jl")
 include("vlae.jl")
 include("fvlae.jl")
 include("had.jl")
+include("conv_classifier.jl")
 
 export VLAE, FVLAE, AbstractVLAE
 
