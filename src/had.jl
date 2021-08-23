@@ -408,7 +408,7 @@ Extracts the probability that a sample is an anomaly.
 classifier_score(c, x) = softmax(c(x))[2,:]
 classifier_score(c, x::AbstractArray{T,4}) where T = cpu(softmax(c(gpu(x)))[2,:])
 classifier_score(c, x, batchsize::Int) = 
-    vcat(map(b->cpu(_classifier_score(c, b)), Flux.Data.DataLoader(x, batchsize=batchsize))...)
+    vcat(map(b->cpu(classifier_score(c, b)), Flux.Data.DataLoader(x, batchsize=batchsize))...)
 
 
 ### extension of some methods

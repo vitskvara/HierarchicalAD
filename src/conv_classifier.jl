@@ -1,9 +1,13 @@
-function create_input_data(X, y, labels, nntr::Int, nnval::Int, natr::Int, naval::Int, ntst::Int)
+function create_input_data(X, y, labels, nntr::Int, nnval::Int, natr::Int, naval::Int, ntst::Int; 
+		seed=nothing)
     # create anomalous and normal splits
     nX = X[:,:,:,labels]
     aX = X[:,:,:,.!labels];
     labels = Int.(labels);
     
+    # fix the seed
+    isnothing(seed) ? nothing : Random.seed!(seed)
+
     # sample normal data
     nn = size(nX,4)
     randinds = sample(1:nn, nn, replace=false);
@@ -25,15 +29,15 @@ function create_input_data(X, y, labels, nntr::Int, nnval::Int, natr::Int, naval
     val_y = cat(zeros(nnval), ones(naval), dims=1)
     tst_X = cat(sample_tensor(tst_nX, ntst), sample_tensor(tst_aX, ntst), dims=4)
     tst_y = cat(zeros(ntst), ones(ntst), dims=1)
+
+    # restart seed
+    Random.seed!()
     
     return tr_nX, (tr_X, tr_y), (val_X, val_y), (tst_X, tst_y)
 end
 
-function construct_conv_classifier(autoencoder_parameters, datasize)
-    ks = autoencoder_parameters[:ks]
-    af = eval(Meta.parse(autoencoder_parameters[:activation]))
-    strd = autoencoder_parameters[:strd]
-    ncs = autoencoder_parameters[:ncs]
+function construct_conv_classifier(ks, activation, strd, ncs, datasize)
+	af = eval(Meta.parse(activation))
     inncs = vcat([datasize[3]], ncs[1:end-1])
     classifier_conv_part = Chain([Conv(k, inc => outc, af) for (k, inc, outc) in zip(ks, inncs, ncs)]...)
     odims = outdims(classifier_conv_part, datasize)
@@ -70,10 +74,13 @@ function train_conv_classifier!(classifier, tr_X, tr_y, val_X, val_y;
         for (x, y) in data_itr
             param_update!(loss, ps, (x, y), opt)
         end
-        tr_l = loss(tr_X, oh_tr_y)
-        val_l = loss(val_X, oh_val_y)
-        tr_auc = auc_val(tr_y, cpu(classifier_score(classifier, gpu(tr_X))))
-        val_auc = auc_val(val_y, cpu(classifier_score(classifier, gpu(val_X))))
+        local tr_l, val_l, tr_auc, val_auc
+        @suppress begin
+			tr_l = mean(map(x->cpu(loss(x)), Flux.Data.DataLoader((tr_X, oh_tr_y), batchsize=batchsize)))
+	        val_l = mean(map(x->cpu(loss(x)), Flux.Data.DataLoader((val_X, oh_val_y), batchsize=batchsize)))
+            tr_auc = auc_val(tr_y, cpu(classifier_score(classifier, tr_X, batchsize)))
+	        val_auc = auc_val(val_y, cpu(classifier_score(classifier, val_X, batchsize)))
+	    end
         if verb
             println("Epoch $epoch: loss = $(tr_l), tr AUC = $(tr_auc), val AUC = $(val_auc)")
         end
@@ -82,7 +89,7 @@ function train_conv_classifier!(classifier, tr_X, tr_y, val_X, val_y;
         push!(history, :tr_auc, epoch, tr_auc)
         push!(history, :val_auc, epoch, val_auc)
 
-        if (val_auc < _val_auc)
+        if (val_auc <= _val_auc)
             if _patience >= patience
                 if verb
                     @info "Stopping early after $epoch epochs."
@@ -93,7 +100,6 @@ function train_conv_classifier!(classifier, tr_X, tr_y, val_X, val_y;
             end
         else
             _val_auc = val_auc
-            #_patience = 0
         end
     end
     @info "Finished."
