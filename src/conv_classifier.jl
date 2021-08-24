@@ -54,9 +54,10 @@ function train_conv_classifier!(classifier, tr_X, tr_y, val_X, val_y;
         verb = true
     )
     
+    tr_classifier = deepcopy(classifier)
     opt = ADAM(lr)
-    ps = params(classifier)
-    loss(x,y) = Flux.Losses.logitcrossentropy(classifier(gpu(x)), gpu(y)) + λ*sum(sqnorm, ps)
+    ps = params(tr_classifier)
+    loss(x,y) = Flux.Losses.logitcrossentropy(tr_classifier(gpu(x)), gpu(y)) + λ*sum(sqnorm, ps)
     loss(x) = loss(x...)
     oh_tr_y = Flux.onehotbatch(Bool.(tr_y), 0:1)
     oh_val_y = Flux.onehotbatch(Bool.(val_y), 0:1)
@@ -78,8 +79,8 @@ function train_conv_classifier!(classifier, tr_X, tr_y, val_X, val_y;
         @suppress begin
 			tr_l = mean(map(x->cpu(loss(x)), Flux.Data.DataLoader((tr_X, oh_tr_y), batchsize=batchsize)))
 	        val_l = mean(map(x->cpu(loss(x)), Flux.Data.DataLoader((val_X, oh_val_y), batchsize=batchsize)))
-            tr_auc = auc_val(tr_y, cpu(classifier_score(classifier, tr_X, batchsize)))
-	        val_auc = auc_val(val_y, cpu(classifier_score(classifier, val_X, batchsize)))
+            tr_auc = auc_val(tr_y, cpu(classifier_score(tr_classifier, tr_X, batchsize)))
+	        val_auc = auc_val(val_y, cpu(classifier_score(tr_classifier, val_X, batchsize)))
 	    end
         if verb
             println("Epoch $epoch: loss = $(tr_l), tr AUC = $(tr_auc), val AUC = $(val_auc)")
@@ -94,15 +95,16 @@ function train_conv_classifier!(classifier, tr_X, tr_y, val_X, val_y;
                 if verb
                     @info "Stopping early after $epoch epochs."
                 end
-                return history, opt
+                return classifier, history, opt
             else
                 _patience += 1
             end
         else
+        	classifier = deepcopy(tr_classifier)
             _val_auc = val_auc
         end
     end
     @info "Finished."
     
-    return history, opt
+    return classifier, history, opt
 end

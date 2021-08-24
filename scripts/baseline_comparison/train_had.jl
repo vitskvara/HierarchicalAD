@@ -7,8 +7,11 @@ using ValueHistories, DataFrames
 using Plots
 using ArgParse
 using IterTools
+using StatstBase
 
-using HierarchicalAD: construct_conv_classifier, train_conv_classifier!, create_input_data
+using HierarchicalAD: autoencoder_params_outputs_from_fvlae_data, create_input_data, knn_constructor
+using HierarchicalAD: TrainingParameters, TrainingOutputs, HAD
+using HierarchicalAD: fit_detectors!, fit_classifier!, predict
 using HierarchicalAD: auc_val, classifier_score
 
 arg_table = ArgParseSettings(;autofix_names=true)
@@ -18,10 +21,10 @@ arg_table = ArgParseSettings(;autofix_names=true)
 		help = "dir where the models are saved"
 	"--model-id"
 		default = nothing
-		help = "id of the FVLAE model whose architecture is to be used for construction fo the classifier"
+		help = "id of the FVLAE model which is to be used for construction of HAD"
 	"--model-ind"
 		default = nothing
-		help = "index of the FVLAE model whose architecture is to be used for construction fo the classifier"
+		help = "index of the FVLAE model which is to be used for constructionof of HAD"
 end
 args = parse_args(arg_table)
 @unpack modeldir, model_id, model_ind = args
@@ -30,12 +33,12 @@ args = parse_args(arg_table)
 X, y = HierarchicalAD.load_shapes2D();
 
 # set device id
-CUDA.device!(2)
+CUDA.device!(0)
 
 # setup paths
 modeldir = datadir(modeldir)
-plotpath = datadir("plots/baseline_comparison/conv_classifier")
-outpath = datadir("baseline_comparison/conv_classifier")
+plotpath = datadir("plots/baseline_comparison/had")
+outpath = datadir("baseline_comparison/had")
 mkpath(outpath)
 mkpath(plotpath)
 
@@ -71,11 +74,19 @@ label_desc = [
 	"rotated anomalous", 
 	"squares or right bottom anomalous"
 	]
-conv_classifier_params = (lr = 0.001f0, λ = 0f0, batchsize = 64, nepochs = 1000, patience = 1, verb = true)
 
-function train_and_evaluate_classifier(mf)
+function train_and_evaluate_had(mf, autoencoder_data)
 	model_id = split(split(mf, "model_id=")[2], "_")[1]
-	autoencoder_data = load(joinpath(modeldir, mf))
+	autoencoder_parameters, autoencoder_outputs = 
+	    autoencoder_params_outputs_from_fvlae_data(autoencoder_data, size(X));
+	# setup some other params
+	k = 5
+	lambda = 0.1f0
+	batchsize = 128
+	latent_count = autoencoder_data[:experiment_args].latent_count
+	detector_parameters = (k=k, v=:kappa)
+	classifier_parameters = (λ=lambda, batchsize=batchsize, nepochs=200, val_ratio=0.2, n_candidates=100)    
+
 	
 	for seed = 1:10
 		aucs_per_split = []
@@ -102,15 +113,21 @@ function train_and_evaluate_classifier(mf)
 						rethrow(e)
 					end
 				end
-				classifier = construct_conv_classifier(
-					autoencoder_data[:experiment_args].kernelsizes,
-					autoencoder_data[:experiment_args].activation,
-					autoencoder_data[:experiment_args].stride,
-					autoencoder_data[:experiment_args].channels,
-					size(X))
+				# create the model
+				model = HAD(
+				    gpu(autoencoder_data[:model]),
+				    [knn_constructor(;detector_parameters...) for _ in 1:latent_count],
+				    Dense(latent_count+1, 2),
+				    TrainingParameters(Dict(autoencoder_parameters), Dict(detector_parameters), Dict(classifier_parameters)),
+				    TrainingOutputs(autoencoder_outputs, Dict(), Dict())
+				    )
+				# train detectors
+				fit_detectors!(model, tr_nX);
 
-				classifier, history, opt = train_conv_classifier!(classifier, tr_X, tr_y, val_X, val_y; conv_classifier_params...);
-				scores = cpu(classifier_score(classifier, tst_X, 128))
+				# fit classifier
+				fit_classifier!(model, tr_X, tr_y, val_X, val_y);
+
+				scores = StatsBase.predict(model, tst_X)
 				auc = auc_val(tst_y, scores)
 				@info "Finished training, test AUC = $(auc)"
 				push!(aucs_per_samples, auc)
@@ -121,7 +138,7 @@ function train_and_evaluate_classifier(mf)
 			push!(scores_per_split, scores_per_samples)
 			push!(tst_ys_per_split, tst_ys_per_samples)
 		end
-		savef = joinpath(outpath, "classifier_output_model_id=$(model_id)_seed=$(seed).bson")
+		savef = joinpath(outpath, "had_output_model_id=$(model_id)_seed=$(seed).bson")
 		outdata = Dict(
 			:nns => nns, :nas => nas, :ntst => ntst,
 			:model_id => model_id,
@@ -137,6 +154,7 @@ function train_and_evaluate_classifier(mf)
 end
 
 for mf in mfs
-	train_and_evaluate_classifier(mf)
+	autoencoder_data = load(joinpath(modeldir, mf))
+	train_and_evaluate_had(mf, autoencoder_data)
 end
 
