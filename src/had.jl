@@ -254,18 +254,21 @@ function train_classifier!(classifier, tr_x, tr_y, val_x, val_y;
     loss(x,y) = Flux.Losses.logitcrossentropy(classifier(x), y) + λ*sum(sqnorm, ps)
     loss(x) = loss(x...)
     
-    local data_itr
+       batchsize2 = floor(Int, batchsize/2)
+    local data_itr_n, data_itr_a
     @suppress begin
-        data_itr = Flux.Data.DataLoader((tr_x, tr_y), batchsize=batchsize)
+        data_itr_n = Flux.Data.DataLoader(tr_x[:,tr_y[1,:]], batchsize=batchsize2) 
+        data_itr_a = Flux.Data.DataLoader(tr_x[:,tr_y[2,:]], batchsize=batchsize2)
     end
     
     _val_auc = 0
     _patience = 1
     history = MVHistory()
     for epoch in 1:nepochs
-        for (x, y) in data_itr
-            param_update!(loss, ps, (x, y), opt)
-        end
+        for (xn, xa) in zip(data_itr_n, data_itr_a)
+            y = Flux.onehotbatch(Bool.(vcat(zeros(Int, size(xn,2)), ones(Int, size(xa,2)))), 0:1)
+            HierarchicalAD.param_update!(loss, ps, (hcat(xn,xa), y), opt)
+         end
         tr_l = loss(tr_x, tr_y)
         val_l = loss(val_x, val_y)
         tr_auc = auc_val(Flux.onecold(tr_y) .-1, classifier_score(classifier, tr_x))
