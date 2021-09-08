@@ -33,7 +33,7 @@ args = parse_args(arg_table)
 X, y = HierarchicalAD.load_shapes2D();
 
 # set device id
-CUDA.device!(0)
+CUDA.device!(1)
 
 # setup paths
 modeldir = datadir(modeldir)
@@ -168,8 +168,10 @@ mkpath(outpath)
 nns = vcat(range(30, 370, step=30), range(400, 3000, step=200))
 nas = vcat([10], collect(range(100, 1000, step = 200)))
 
-mfs = vcat(["activation=relu_channels=8-8-16-32-64_data=shapes2D_gamma=50.0_lambda=0.0_latent_dim=4_model=fvlae_model_id=20210817174044364_xdist=bernoulli.bson"],
-	readdir(modeldir))
+mfs = readdir(modeldir)
+
+mfs = [ "activation=relu_channels=16-32-64_data=shapes2D_gamma=50.0_lambda=0.0_latent_dim=16_model=fvlae_model_id=20210818083556514_xdist=gaussian.bson"]
+mfs = ["activation=relu_channels=8-8-16-32-64_data=shapes2D_gamma=10.0_lambda=0.0_latent_dim=4_model=fvlae_model_id=20210818115528042_xdist=gaussian.bson"]
 for mf in mfs
 	for ilabel in 1:8
 		labels = label_vec[ilabel]
@@ -179,6 +181,7 @@ for mf in mfs
 	end
 end
 
+# this crashed at rotated normal
 
 for mf in mfs
 	autoencoder_data = load(joinpath(modeldir, mf))
@@ -243,7 +246,21 @@ end
 
 
 
+# debug
+outpath = datadir("baseline_comparison/debug")
+mkpath(outpath)
+nns = [500]
+nas = [100]
+mfs = ["activation=relu_channels=8-8-16-32-64_data=shapes2D_gamma=10.0_lambda=0.0_latent_dim=4_model=fvlae_model_id=20210818115528042_xdist=gaussian.bson"]
 
+for mf in mfs
+	for ilabel in 1:8
+		labels = label_vec[ilabel]
+		desc = label_desc[ilabel]
+		autoencoder_data = load(joinpath(modeldir, mf))
+		train_and_evaluate_had(mf, autoencoder_data)
+	end
+end
 
 
 
