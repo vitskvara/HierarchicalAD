@@ -170,7 +170,7 @@ function train_fvlae(zdim, hdim, batchsize, ks, ncs, strd, nepochs, tr_x::Abstra
 	layer_depth=1, lr=0.001f0, var=:dense, 
 	activation="relu", discriminator_nlayers=3, xdist=:gaussian, pad=0,
 	convergence_threshold=0f0, initial_convergence_epochs=10,
-    max_retrain_tries=10, kwargs...) where T
+    max_retrain_tries=10, early_stopping=true, kwargs...) where T
     # this is to ensure that the model converges to something meaningful
 	hist, rdata, model, zs, aeopt, copt = nothing, nothing, nothing, nothing, nothing, nothing
     
@@ -193,7 +193,8 @@ function train_fvlae(zdim, hdim, batchsize, ks, ncs, strd, nepochs, tr_x::Abstra
         	disentangle_per_latent=disentangle_per_latent,
             λ=λ, γ=γ, epochsize = epochsize, 
             convergence_threshold=convergence_threshold,
-            initial_convergence_epochs=initial_convergence_epochs)
+            initial_convergence_epochs=initial_convergence_epochs,
+            early_stopping=early_stopping)
         ntries += 1
     end
     
@@ -218,7 +219,8 @@ function train!(model::FVLAE, nepochs, batchsize, tr_x::AbstractArray{T,4},
 	tr_y=nothing, val_y=nothing, factors=nothing, disentangle_per_latent=true,
 	disentanglement_repeats::Int=1,
 	λ=0.0f0, γ=1.0f0, epochsize = size(tr_x,4), convergence_threshold=0f0,
-    initial_convergence_epochs=10, kwargs...) where T
+    initial_convergence_epochs=10, early_stopping=true,
+    kwargs...) where T
 	if !isnothing(tr_y) && !(isnothing(val_y)) && isnothing(factors)
 		error("specify factors you want to disentangle")
 	end
@@ -314,7 +316,7 @@ function train!(model::FVLAE, nepochs, batchsize, tr_x::AbstractArray{T,4},
 		end
 
 		# early stopping
-		if control_rloss < rloss
+		if early_stopping && control_rloss < rloss
 			@info "Stoppping early after $epoch epochs due to no improvement."
 			return hist, rdata, zs
 		else

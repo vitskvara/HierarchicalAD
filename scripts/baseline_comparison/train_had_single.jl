@@ -181,6 +181,37 @@ for mf in mfs
 	end
 end
 
+# this is to be run afterwards to have more gaussian models
+outpath = datadir("baseline_comparison/had_simple")
+
+nns = vcat(range(30, 370, step=30), range(400, 3000, step=200))
+nas = vcat([10], collect(range(100, 1000, step = 200)))
+
+mfs = ["activation=relu_channels=16-32-64_data=shapes2D_gamma=50.0_lambda=0.0_latent_dim=4_model=fvlae_model_id=20210818062127988_xdist=gaussian.bson"]
+for mf in mfs
+	for ilabel in 3:8
+		labels = label_vec[ilabel]
+		desc = label_desc[ilabel]
+		autoencoder_data = load(joinpath(modeldir, mf))
+		train_and_evaluate_had(mf, autoencoder_data)
+	end
+end
+
+# this is another good gaussian model
+# also these two have larger ldim
+mfs = [ "activation=relu_channels=8-8-16-32-64_data=shapes2D_gamma=50.0_lambda=0.0_latent_dim=4_model=fvlae_model_id=20210818102946782_xdist=gaussian.bson",
+ "activation=relu_channels=16-32-64_data=shapes2D_gamma=50.0_lambda=0.0_latent_dim=16_model=fvlae_model_id=2021081722494387_xdist=bernoulli.bson",
+ "activation=relu_channels=16-32-64_data=shapes2D_gamma=50.0_lambda=0.0_latent_dim=16_model=fvlae_model_id=20210818083556514_xdist=gaussian.bson"]
+for mf in mfs
+	for ilabel in 1:8
+		labels = label_vec[ilabel]
+		desc = label_desc[ilabel]
+		autoencoder_data = load(joinpath(modeldir, mf))
+		train_and_evaluate_had(mf, autoencoder_data)
+	end
+end
+
+
 # this crashed at rotated normal
 
 for mf in mfs
