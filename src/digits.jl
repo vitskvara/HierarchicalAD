@@ -25,7 +25,7 @@ end
 img_to_array_bw(img) = reshape(Float32.(channelview(Gray.(img))), size(img)...,1)
 img_to_array_rgb(img) = permutedims(Float32.(channelview(RGB.(img))), (2,3,1))
 array_to_img_bw(arr) = Gray.(reshape(permutedims(arr, (3,1,2)), size(arr)[1:2]...))
-array_to_img_rgb(arr) = RGB.(arr[:,:,1], arr[:,:,2], arr[:,:,3])
+array_to_img_rgb(arr) = RGB.(arr[:,:,1]', arr[:,:,2]', arr[:,:,3]')
 
 function transform(img, rot, shearx, sheary, zoom)
     pl = Rotate([rot]) |>
@@ -54,10 +54,22 @@ devectorize(x::AbstractArray{T,2}, w, h, c) where T = reshape(x, w, h, c, :)
 devectorize(x::AbstractArray{T,4}, args...; kwargs...) where T = x
 
 function draw(x::AbstractArray{T,4}) where T
-    return hcat(array_to_img_bw.([x[:,:,:,i] for i in 1:size(x,4)])...)
+    if size(x,3) == 1
+        return hcat(array_to_img_bw.([x[:,:,:,i] for i in 1:size(x,4)])...)
+    elseif size(x,3) == 3
+        return hcat(array_to_img_rgb.([x[:,:,:,i] for i in 1:size(x,4)])...)
+    else
+        error("only implemented for number of channels equal to 1 or 3")
+    end
 end
 function draw(x::AbstractArray{T,3}) where T
-    return array_to_img_bw(x)
+    if size(x,3) == 1
+        return array_to_img_bw(x)
+    elseif size(x,3) == 3
+        return array_to_img_rgb(x)
+    else
+        error("only implemented for number of channels equal to 1 or 3")
+    end
 end
 function draw(x::AbstractArray{T,2}, s=(28,28)) where T
     draw(devectorize(x, s...))

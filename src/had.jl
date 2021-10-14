@@ -136,7 +136,16 @@ HAD(nl::Int, ap, ac, dp, dc, cp, c) = HAD(
         TrainingParameters(Dict(ap), Dict(dp), Dict(cp)),
         TrainingOutputs()
         )
-HAD(nl::Int, ap, ac, dp, dc, cp) = HAD(nl, ap, ac, dp, dc, cp, Dense(nl+1, 2))
+function HAD(nl::Int, ap, ac, dp, dc, cp)
+    # decide whether to use reconstruction error in the classifier or not
+    userec = get(cp, :use_reconstruction, true)
+    if userec
+        cp = merge(cp, (use_reconstruction=true,)) 
+        return HAD(nl, ap, ac, dp, dc, cp, Dense(nl+1, 2))
+    else
+        return HAD(nl, ap, ac, dp, dc, cp, Dense(nl, 2))
+    end
+end
 
 # dense fvlae parameters
 """
@@ -380,15 +389,21 @@ end
 """
 	all_scores(model::HAD, x; L::Int=10)
 
-Detector + AE rec. probability, L is number of samples in the computation of rec. probability.
+Detector + AE rec. probability, L is number of samples in the computation of rec. probability. Note that 
+rec. probability is only used if 'model.parameters.classifier.use_reconstruction==true' (default).
 """
 function all_scores(model::HAD, x; L::Int=10)
-    rec_score = reconstruction_probability(model.autoencoder, x, L, model.parameters.autoencoder[:batchsize])
     detector_scores = ensemble_scores(
         model.detectors, 
         cpu(encode_all(model.autoencoder, x; batchsize=model.parameters.autoencoder[:batchsize], mean=true))
         )
-    cat(detector_scores, [rec_score], dims=1)
+    userec = get(model.parameters.classifier, :use_reconstruction, true)
+    if !userec
+        return detector_scores
+    else
+        rec_score = reconstruction_probability(model.autoencoder, x, L, model.parameters.autoencoder[:batchsize])
+        return cat(detector_scores, [rec_score], dims=1)
+    end
 end
 
 """
